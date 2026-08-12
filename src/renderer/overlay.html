@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hey Jave Screen Overlay</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent;
+      pointer-events: none;
+      user-select: none;
+    }
+    
+    .screen-glow {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: 0;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      box-shadow: inset 0 0 25px 6px rgba(66, 133, 244, 0.85),
+                  inset 0 0 50px 12px rgba(234, 67, 53, 0.45);
+    }
+    
+    .screen-glow.active {
+      opacity: 1;
+      animation: screen-pulse 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes screen-pulse {
+      0% {
+        box-shadow: inset 0 0 25px 6px rgba(66, 133, 244, 0.9),
+                    inset 0 0 55px 14px rgba(52, 168, 83, 0.5);
+      }
+      50% {
+        box-shadow: inset 0 0 30px 8px rgba(251, 188, 4, 0.9),
+                    inset 0 0 65px 16px rgba(234, 67, 53, 0.5);
+      }
+      100% {
+        box-shadow: inset 0 0 25px 6px rgba(234, 67, 53, 0.9),
+                    inset 0 0 55px 14px rgba(66, 133, 244, 0.5);
+      }
+    }
+
+    .status-pill {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(12, 15, 23, 0.88);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(66, 133, 244, 0.4);
+      color: #f0f0f0;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+      opacity: 0;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    .screen-glow.active .status-pill {
+      opacity: 1;
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4285f4;
+      animation: dot-glow 1s infinite alternate;
+      flex-shrink: 0;
+    }
+
+    @keyframes dot-glow {
+      from { background: #4285f4; transform: scale(0.9); }
+      to { background: #ea4335; transform: scale(1.25); }
+    }
+
+    .prompt-text {
+      max-width: 450px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <div id="glow" class="screen-glow">
+    <div class="status-pill">
+      <div class="pulse-dot"></div>
+      <span id="status-text" class="prompt-text">⚡ Hey Jave AI Agent Active on Windows Desktop...</span>
+    </div>
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    const glow = document.getElementById('glow');
+    const text = document.getElementById('status-text');
+
+    ipcRenderer.on('overlay:show', (_e, promptText) => {
+      if (promptText) {
+        text.textContent = `⚡ Hey Jave Agent: ${promptText}`;
+      } else {
+        text.textContent = `⚡ Hey Jave Agent Active on Windows Desktop...`;
+      }
+      glow.classList.add('active');
+    });
+
+    ipcRenderer.on('overlay:hide', () => {
+      glow.classList.remove('active');
+    });
+
+    ipcRenderer.on('overlay:update', (_e, stepThought) => {
+      if (stepThought) {
+        text.textContent = `⚡ Hey Jave: ${stepThought}`;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "name": "hey-jave-desktop-agent",
+  "version": "1.0.0",
+  "description": "Production-grade Desktop AI Agent using Electron, Windows UI Automation, and Gemini",
+  "main": "dist-electron/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && electron-builder",
+    "build:electron": "npx tsc -p tsconfig.electron.json",
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.heyjave.desktop",
+    "productName": "Hey Jave",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "build/icon.png"
+    }
+  },
+  "keywords": [
+    "electron",
+    "agent",
+    "ui-automation",
+    "gemini",
+    "ai",
+    "windows"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "@google/genai": "^2.16.0",
+    "bufferutil": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "lucide-react": "^0.475.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "utf-8-validate": "^6.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  }
+}
