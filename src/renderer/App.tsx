@@ -3,7 +3,7 @@ import { AgentStatus, AgentStep, AppConfig, ExecutionResponse } from '../shared/
 import { VoiceEngine } from './voiceEngine';
 import {
   Bot, Send, Settings, Sun, Moon, CheckCircle2,
-  XCircle, Loader2, AlertCircle, Zap, Monitor, Type, Keyboard
+  XCircle, Loader2, Zap, Monitor, Type, Keyboard
 } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import appIconUrl from './assets/icon.png';
@@ -37,11 +37,15 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-function speak(text: string) {
+async function speak(text: string): Promise<void> {
   const plain = stripMarkdown(text).slice(0, 600); // cap at 600 chars for TTS
   if (!plain) return;
   console.log('[TTS] Speaking:', plain.slice(0, 80) + '…');
-  ipc()?.invoke('voice:speak', { text: plain }).catch((err) => console.error('[App] TTS failed:', err));
+  try {
+    await ipc()?.invoke('voice:speak', { text: plain });
+  } catch (err) {
+    console.error('[App] TTS failed:', err);
+  }
 }
 
 /* ── Types ─────────────────────────────────────────────────── */
@@ -86,11 +90,9 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [config, setConfig] = useState<AppConfig>({
-    geminiApiKey: '',
     geminiModel: 'gemini-2.5-flash',
-    uiaTimeoutMs: 5000,
-    enableVisionFallback: true,
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -150,7 +152,10 @@ export default function App() {
           void sendPromptRef.current(command);
         } else {
           showBorderGlow(true, 'Listening…');
-          speak("I'm listening, tell me what you need.");
+          setIsSpeaking(true);
+          await speak("I'm listening, tell me what you need.");
+          setIsSpeaking(false);
+          showBorderGlow(true, 'Listening…');
         }
       },
       onStateChange: (state) => {
@@ -192,7 +197,7 @@ export default function App() {
     try { localStorage.setItem('hj-theme', next); } catch {}
   };
 
-  /* Load config on mount */
+  /* Load config and setup listeners on mount */
   useEffect(() => {
     const renderer = ipc();
     if (!renderer) return;
@@ -213,8 +218,22 @@ export default function App() {
       ));
     };
 
+    const onBackendStatus = (_: unknown, data: unknown) => {
+      const st = data as { connected: boolean };
+      if (st.connected) {
+        renderer.invoke('config:get').then((res) => {
+          if (res) setConfig(res as AppConfig);
+        }).catch(console.error);
+      }
+    };
+
     renderer.on('agent:step-update', onStep);
-    return () => renderer.removeAllListeners('agent:step-update');
+    renderer.on('backend:status', onBackendStatus);
+
+    return () => {
+      renderer.removeAllListeners('agent:step-update');
+      renderer.removeAllListeners('backend:status');
+    };
   }, []);
 
   /* Auto-scroll */
@@ -232,6 +251,7 @@ export default function App() {
   };
 
   const isBusy = status === 'analyzing' || status === 'executing';
+  const isAnimationActive = isBusy || voiceActive || isSpeaking;
 
   const sendPrompt = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -270,10 +290,12 @@ export default function App() {
       ));
       setStatus(response.success ? 'completed' : 'error');
 
-      // Speak the agent's final answer back via TTS.
+      // Speak the agent's final answer back via TTS with active glow animation
       if (response.success && response.message) {
+        setIsSpeaking(true);
         showBorderGlow(true, 'Agent speaking…');
-        speak(response.message);
+        await speak(response.message);
+        setIsSpeaking(false);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -286,13 +308,12 @@ export default function App() {
       setStatus('error');
     } finally {
       inFlightRef.current = false;
-    }
-
-    setTimeout(() => {
       setStatus('idle');
-      showBorderGlow(false, '');
-    }, 3000);
-  }, [config, showBorderGlow]);
+      if (!voiceActive) {
+        showBorderGlow(false, '');
+      }
+    }
+  }, [showBorderGlow, voiceActive]);
 
   // Keep the voice engine's reference to the latest sendPrompt.
   sendPromptRef.current = sendPrompt;
@@ -315,18 +336,19 @@ export default function App() {
   /* Status label */
   const statusLabel = () => {
     if (voiceStatus) return voiceStatus;
+    if (isSpeaking) return 'Speaking…';
     if (status === 'executing') return 'Agent is working…';
     if (status === 'completed') return 'Done';
     if (status === 'error') return 'Something went wrong';
-    return config.geminiModel || 'Ready';
+    return config.geminiModel || 'gemini-2.5-flash';
   };
 
-  const dotClass = isBusy ? 'busy' : status === 'error' ? 'error' : '';
+  const dotClass = isAnimationActive ? 'busy' : status === 'error' ? 'error' : '';
 
   return (
     <>
-      {/* Window edge animation — visible while busy or voice active */}
-      <div className={`edge-border${isBusy || voiceActive ? ' is-active' : ''}`} />
+      {/* Window edge animation — visible while agent/user is speaking or busy */}
+      <div className={`edge-border${isAnimationActive ? ' is-active' : ''}`} />
 
       <div className="app">
         {/* ── Top Bar ── */}
@@ -337,8 +359,8 @@ export default function App() {
           </div>
 
           <div className="topbar-center">
-            <div className="model-pill" title={voiceActive ? 'Voice session active' : 'Background voice listening active'}>
-              <span className={`status-dot${voiceActive || isBusy ? ' busy' : ''}${dotClass ? ` ${dotClass}` : ''}`} />
+            <div className="model-pill" title={`Python Brain: ${config.geminiModel || 'gemini-2.5-flash'}`}>
+              <span className={`status-dot${isAnimationActive ? ' busy' : ''}${dotClass ? ` ${dotClass}` : ''}`} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {statusLabel()}
               </span>
@@ -354,17 +376,6 @@ export default function App() {
             </button>
           </div>
         </header>
-
-        {/* ── API Key Warning ── */}
-        {!config.geminiApiKey && (
-          <div className="no-key-banner">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <AlertCircle size={14} />
-              <span>Gemini API key not set — add it in Settings to run prompts.</span>
-            </div>
-            <button onClick={() => setShowSettings(true)}>Add API Key</button>
-          </div>
-        )}
 
         {/* ── Chat Area ── */}
         <main className="chat-area">

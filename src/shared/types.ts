@@ -175,16 +175,12 @@ export interface UiaActionResult {
   error?:  string;
 }
 
-// ── App Config ────────────────────────────────────────────────────────────────
+// ── App Config (Fetched dynamically from Python Backend) ─────────────────────
 export interface AppConfig {
-  geminiApiKey:         string;
-  geminiModel:          string;
-  useVertexAi?:         boolean;
-  projectId?:           string;
-  location?:            string;
-  credentialsPath?:     string;
-  uiaTimeoutMs:         number;
-  enableVisionFallback: boolean;
+  geminiModel?: string;
+  backendUrl?: string;
+  backendWs?: string;
+  backendConnected?: boolean;
 }
 
 

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import dotenv from 'dotenv';
+import WebSocket from 'ws';
 import { showScreenGlow, hideScreenGlow, destroyOverlayWindow } from './overlayWindow';
 import { UiaBridge } from './bridge/uiaBridge';
 
@@ -14,13 +15,12 @@ const envPath = [
 ].find((p) => fs.existsSync(p)) || path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
-const BACKEND_PORT = parseInt(process.env.PYTHON_BACKEND_PORT || '8765', 10);
-const BACKEND_HOST = process.env.PYTHON_BACKEND_HOST || '127.0.0.1';
-const BACKEND_HTTP = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
-const BACKEND_WS = `ws://${BACKEND_HOST}:${BACKEND_PORT}/ws`;
+const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
+const BACKEND_WS = process.env.PYTHON_BACKEND_WS || `${BACKEND_HTTP.replace(/^http/, 'ws')}/ws`;
 
 let mainWindow: BrowserWindow | null = null;
 let pythonProcess: ChildProcess | null = null;
+let activeTtsProcess: ChildProcess | null = null;
 let wsClient: WebSocket | null = null;
 let wsReconnectTimer: NodeJS.Timeout | null = null;
 const uiaBridge = new UiaBridge();
@@ -58,12 +58,12 @@ function startPythonBackend() {
   });
 
   // Connect WebSocket once backend starts
-  setTimeout(() => connectWebSocket(), 2000);
+  setTimeout(() => connectWebSocket(), 1500);
 }
 
 function stopPythonBackend() {
-  if (pythonProcess) {
-    console.log('[Main] Stopping Python backend...');
+  if (pythonProcess && pythonProcess.pid) {
+    console.log(`[Main] Stopping Python backend process (PID=${pythonProcess.pid})...`);
     try {
       if (process.platform === 'win32') {
         spawn('taskkill', ['/pid', String(pythonProcess.pid), '/f', '/t']);
@@ -77,25 +77,55 @@ function stopPythonBackend() {
   }
 }
 
+// ── TTS Process Manager ───────────────────────────────────────────────────────
+function stopAllTts() {
+  if (activeTtsProcess && activeTtsProcess.pid) {
+    console.log(`[Main] Stopping active TTS speech process (PID=${activeTtsProcess.pid})...`);
+    try {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(activeTtsProcess.pid), '/f', '/t']);
+      } else {
+        activeTtsProcess.kill('SIGKILL');
+      }
+    } catch (e) {
+      console.error('[Main] Error stopping TTS process:', e);
+    }
+    activeTtsProcess = null;
+  }
+}
+
+// ── Complete Clean Exit ───────────────────────────────────────────────────────
+function cleanExit() {
+  console.log('[Main] Cleaning up all resources and child processes...');
+  stopAllTts();
+  destroyOverlayWindow();
+  stopPythonBackend();
+  if (wsClient) {
+    try { wsClient.close(); } catch {}
+    wsClient = null;
+  }
+}
+
 // ── WebSocket Bridge with Python Brain ────────────────────────────────────────
 function connectWebSocket() {
-  if (wsClient && wsClient.readyState === WebSocket.OPEN) return;
+  if (wsClient && (wsClient.readyState === WebSocket.OPEN || wsClient.readyState === WebSocket.CONNECTING)) return;
 
   try {
     console.log(`[Main] Connecting to Python backend WS: ${BACKEND_WS}`);
     wsClient = new WebSocket(BACKEND_WS);
 
-    wsClient.onopen = () => {
+    wsClient.on('open', () => {
       console.log('[Main] Connected to Python Backend WebSocket successfully!');
       if (wsReconnectTimer) {
         clearTimeout(wsReconnectTimer);
         wsReconnectTimer = null;
       }
-    };
+      mainWindow?.webContents.send('backend:status', { connected: true });
+    });
 
-    wsClient.onmessage = async (event) => {
+    wsClient.on('message', async (data) => {
       try {
-        const raw = typeof event.data === 'string' ? event.data : event.data.toString();
+        const raw = data.toString();
         const msg = JSON.parse(raw);
 
         // Tool execution requested by Python brain
@@ -136,106 +166,120 @@ function connectWebSocket() {
       } catch (err) {
         console.error('[Main] Error parsing WebSocket message:', err);
       }
-    };
+    });
 
-    wsClient.onclose = () => {
+    wsClient.on('close', () => {
       console.log('[Main] WebSocket disconnected from Python backend. Retrying in 3s...');
       wsClient = null;
+      mainWindow?.webContents.send('backend:status', { connected: false });
       if (!wsReconnectTimer) {
         wsReconnectTimer = setTimeout(() => connectWebSocket(), 3000);
       }
-    };
+    });
 
-    wsClient.onerror = (err) => {
-      console.warn('[Main] WebSocket error (will retry):', err);
-    };
+    wsClient.on('error', (err) => {
+      console.warn('[Main] WebSocket error (will retry):', err.message || err);
+      mainWindow?.webContents.send('backend:status', { connected: false });
+    });
   } catch (err) {
     console.error('[Main] Failed to initialize WebSocket:', err);
+    mainWindow?.webContents.send('backend:status', { connected: false });
     if (!wsReconnectTimer) {
       wsReconnectTimer = setTimeout(() => connectWebSocket(), 3000);
     }
   }
 }
 
-// ── Window ─────────────────────────────────────────────────────────────────────
-function createWindow() {
-  const iconCandidates = [
-    path.join(__dirname, '../build/icon.png'),
-    path.join(__dirname, '../../build/icon.png'),
-    path.join(__dirname, '../icon.png'),
-    path.join(process.cwd(), 'icon.png'),
-  ];
-  const appIcon = iconCandidates.find((p) => fs.existsSync(p));
-
+// ── Main Electron App Window ──────────────────────────────────────────────────
+function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1050,
-    height: 720,
-    minWidth: 800,
-    minHeight: 600,
-    title: 'Hey Jave',
-    icon: appIcon,
-    backgroundColor: '#0c0f17',
+    width: 820,
+    height: 700,
+    minWidth: 620,
+    minHeight: 520,
     frame: true,
-    titleBarStyle: 'default',
+    title: 'Hey Jave — Desktop AI Agent',
+    icon: path.join(__dirname, '../../build/icon.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      webSecurity: false,
     },
+    backgroundColor: '#111318',
+    show: false,
   });
 
-  const distFile = path.join(__dirname, '../dist/index.html');
-  console.log('[Main] Loading renderer from:', distFile);
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devServerUrl) {
+    console.log('[Main] Loading dev server:', devServerUrl);
+    mainWindow.loadURL(devServerUrl);
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    mainWindow.loadFile(distFile);
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    console.log('[Main] Loading renderer from:', indexPath);
+    mainWindow.loadFile(indexPath);
   }
-
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
-
-  mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
-    console.error('[Main] Page failed to load:', code, desc);
-  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-    destroyOverlayWindow();
-    stopPythonBackend();
-    app.quit();
   });
 }
 
-// ── App Lifecycle ──────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+// ── App Lifecycle & Clean Exit Handlers ───────────────────────────────────────
+app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === 'media');
+    if (permission === 'media') {
+      callback(true);
+      return;
+    }
+    callback(false);
   });
 
   startPythonBackend();
   createWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
   });
 });
 
 app.on('window-all-closed', () => {
-  destroyOverlayWindow();
-  stopPythonBackend();
-  app.quit();
+  cleanExit();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('before-quit', () => {
-  destroyOverlayWindow();
-  stopPythonBackend();
+  cleanExit();
 });
 
-// ── IPC: Execute Chat Prompt (Routed to Python Brain) ─────────────────────────
-ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string }) => {
-  console.log('[agent:execute-prompt] Sending to Python Brain:', JSON.stringify(request.prompt));
+app.on('will-quit', () => {
+  cleanExit();
+});
+
+process.on('SIGINT', () => {
+  cleanExit();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  cleanExit();
+  process.exit(0);
+});
+
+// ── IPC: Execute Prompt (Routed to Python Agent Brain) ────────────────────────
+ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string; apiKey?: string; model?: string }) => {
+  console.log('[agent:execute-prompt] Sending to Python Brain:', request.prompt);
+  showScreenGlow('Thinking…');
+
   try {
-    showScreenGlow('Thinking…');
     const res = await fetch(`${BACKEND_HTTP}/api/agent/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -248,7 +292,6 @@ ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string 
 
     const data = await res.json() as { success: boolean; message: string; steps?: unknown[]; error?: string };
     console.log('[agent:execute-prompt] Python Brain answered:', JSON.stringify(data.message));
-    hideScreenGlow();
     return {
       success: data.success,
       message: data.message,
@@ -305,20 +348,35 @@ ipcMain.handle('gemini:list-models', async (_event, apiKey?: string) => {
 // ── IPC: Native Windows SAPI TTS ─────────────────────────────────────────────
 ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
   if (!text) return { success: false, error: 'No text to speak' };
+  
+  stopAllTts();
+
   try {
+    showScreenGlow('Speaking…');
     const { execFile } = await import('child_process');
-    await new Promise<void>((resolve, reject) => {
-      execFile(
+    await new Promise<void>((resolve) => {
+      activeTtsProcess = execFile(
         'powershell.exe',
         ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak(${JSON.stringify(text)})`],
         { maxBuffer: 1024 * 1024 },
-        (error) => (error ? reject(error) : resolve()),
+        () => {
+          activeTtsProcess = null;
+          hideScreenGlow();
+          resolve();
+        },
       );
     });
     return { success: true };
   } catch (err: unknown) {
+    hideScreenGlow();
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
+});
+
+ipcMain.handle('voice:stop-speaking', () => {
+  stopAllTts();
+  hideScreenGlow();
+  return { success: true };
 });
 
 // ── IPC: Edge glow ───────────────────────────────────────────────────────────
@@ -337,14 +395,11 @@ ipcMain.handle('config:get', async () => {
       return await res.json();
     }
   } catch (e) {
-    console.warn('[config:get] Backend not reachable yet, reading from process.env');
+    console.warn('[config:get] Backend not reachable yet, returning backend defaults');
   }
 
   return {
-    geminiApiKey: process.env.GEMINI_API_KEY || '',
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    uiaTimeoutMs: parseInt(process.env.UIA_TIMEOUT_MS || '5000', 10),
-    enableVisionFallback: process.env.ENABLE_VISION_FALLBACK !== 'false',
+    geminiModel: 'gemini-2.5-flash',
   };
 });
 

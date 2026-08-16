@@ -52,9 +52,13 @@ Desktop.ini
 
 # Environment & Credentials
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
+!backend/.env.example
 *.pem
+*.key
 *service_account*.json
 *credentials*.json
+backend/*.json
+!backend/package*.json
+!backend/tsconfig*.json
