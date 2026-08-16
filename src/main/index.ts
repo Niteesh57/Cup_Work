@@ -1,34 +1,178 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
 import dotenv from 'dotenv';
-import { AgentRunner } from './agent/agentRunner';
-import { ExecutionRequest, AppConfig } from '../shared/types';
+import { showScreenGlow, hideScreenGlow, destroyOverlayWindow } from './overlayWindow';
+import { UiaBridge } from './bridge/uiaBridge';
 
-import { showScreenGlow, updateScreenGlow, hideScreenGlow } from './overlayWindow';
-
-// Load initial environment variables
-const envPath = path.resolve(__dirname, '../.env');
+// Load initial environment variables from project root .env
+const envPath = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../.env'),
+  path.resolve(__dirname, '../../.env'),
+].find((p) => fs.existsSync(p)) || path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
-let mainWindow: BrowserWindow | null = null;
-const agentRunner = new AgentRunner();
+const BACKEND_PORT = parseInt(process.env.PYTHON_BACKEND_PORT || '8765', 10);
+const BACKEND_HOST = process.env.PYTHON_BACKEND_HOST || '127.0.0.1';
+const BACKEND_HTTP = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
+const BACKEND_WS = `ws://${BACKEND_HOST}:${BACKEND_PORT}/ws`;
 
+let mainWindow: BrowserWindow | null = null;
+let pythonProcess: ChildProcess | null = null;
+let wsClient: WebSocket | null = null;
+let wsReconnectTimer: NodeJS.Timeout | null = null;
+const uiaBridge = new UiaBridge();
+
+// ── Python Backend Process Manager ───────────────────────────────────────────
+function startPythonBackend() {
+  const rootDir = process.cwd();
+  const scriptPath = path.resolve(rootDir, 'backend/main.py');
+
+  if (!fs.existsSync(scriptPath)) {
+    console.error('[Main] Python backend script not found at:', scriptPath);
+    return;
+  }
+
+  console.log(`[Main] Spawning Python Backend at ${BACKEND_HTTP}...`);
+  const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+
+  pythonProcess = spawn(pyCmd, [scriptPath], {
+    cwd: rootDir,
+    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  pythonProcess.stdout?.on('data', (data) => {
+    console.log(`[Python Backend] ${data.toString().trim()}`);
+  });
+
+  pythonProcess.stderr?.on('data', (data) => {
+    console.error(`[Python Backend Err] ${data.toString().trim()}`);
+  });
+
+  pythonProcess.on('exit', (code, signal) => {
+    console.log(`[Main] Python Backend exited (code=${code}, signal=${signal})`);
+    pythonProcess = null;
+  });
+
+  // Connect WebSocket once backend starts
+  setTimeout(() => connectWebSocket(), 2000);
+}
+
+function stopPythonBackend() {
+  if (pythonProcess) {
+    console.log('[Main] Stopping Python backend...');
+    try {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(pythonProcess.pid), '/f', '/t']);
+      } else {
+        pythonProcess.kill('SIGTERM');
+      }
+    } catch (e) {
+      console.error('[Main] Error stopping Python backend:', e);
+    }
+    pythonProcess = null;
+  }
+}
+
+// ── WebSocket Bridge with Python Brain ────────────────────────────────────────
+function connectWebSocket() {
+  if (wsClient && wsClient.readyState === WebSocket.OPEN) return;
+
+  try {
+    console.log(`[Main] Connecting to Python backend WS: ${BACKEND_WS}`);
+    wsClient = new WebSocket(BACKEND_WS);
+
+    wsClient.onopen = () => {
+      console.log('[Main] Connected to Python Backend WebSocket successfully!');
+      if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+      }
+    };
+
+    wsClient.onmessage = async (event) => {
+      try {
+        const raw = typeof event.data === 'string' ? event.data : event.data.toString();
+        const msg = JSON.parse(raw);
+
+        // Tool execution requested by Python brain
+        if (msg.type === 'TOOL_EXECUTE') {
+          console.log(`[Main] Executing tool '${msg.tool}' for task ${msg.taskId}...`);
+          try {
+            const result = await uiaBridge.executeTool(msg.tool, msg.args || {});
+            const resp = {
+              type: 'TOOL_RESULT',
+              id: msg.id,
+              taskId: msg.taskId,
+              success: result.success !== false,
+              result: result,
+            };
+            wsClient?.send(JSON.stringify(resp));
+          } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.error(`[Main] Tool '${msg.tool}' failed:`, errMsg);
+            wsClient?.send(JSON.stringify({
+              type: 'TOOL_RESULT',
+              id: msg.id,
+              taskId: msg.taskId,
+              success: false,
+              result: { success: false, error: errMsg },
+            }));
+          }
+        }
+
+        // Forward live step updates to React renderer
+        if (msg.type === 'AGENT_STEP_UPDATE') {
+          mainWindow?.webContents.send('agent:step-update', msg.step);
+        }
+
+        // Screen glow on task start
+        if (msg.type === 'TASK_START') {
+          showScreenGlow('Thinking…');
+        }
+      } catch (err) {
+        console.error('[Main] Error parsing WebSocket message:', err);
+      }
+    };
+
+    wsClient.onclose = () => {
+      console.log('[Main] WebSocket disconnected from Python backend. Retrying in 3s...');
+      wsClient = null;
+      if (!wsReconnectTimer) {
+        wsReconnectTimer = setTimeout(() => connectWebSocket(), 3000);
+      }
+    };
+
+    wsClient.onerror = (err) => {
+      console.warn('[Main] WebSocket error (will retry):', err);
+    };
+  } catch (err) {
+    console.error('[Main] Failed to initialize WebSocket:', err);
+    if (!wsReconnectTimer) {
+      wsReconnectTimer = setTimeout(() => connectWebSocket(), 3000);
+    }
+  }
+}
+
+// ── Window ─────────────────────────────────────────────────────────────────────
 function createWindow() {
   const iconCandidates = [
     path.join(__dirname, '../build/icon.png'),
     path.join(__dirname, '../../build/icon.png'),
     path.join(__dirname, '../icon.png'),
-    path.join(process.cwd(), 'icon.png')
+    path.join(process.cwd(), 'icon.png'),
   ];
-  const appIcon = iconCandidates.find(p => fs.existsSync(p));
+  const appIcon = iconCandidates.find((p) => fs.existsSync(p));
 
   mainWindow = new BrowserWindow({
     width: 1050,
     height: 720,
     minWidth: 800,
     minHeight: 600,
-    title: 'Hey Jave — Desktop AI Agent',
+    title: 'Hey Jave',
     icon: appIcon,
     backgroundColor: '#0c0f17',
     frame: true,
@@ -36,7 +180,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-    }
+    },
   });
 
   const distFile = path.join(__dirname, '../dist/index.html');
@@ -48,24 +192,27 @@ function createWindow() {
     mainWindow.loadFile(distFile);
   }
 
-  // Open DevTools to surface renderer errors
   mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
     console.error('[Main] Page failed to load:', code, desc);
   });
 
-  mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    console.error('[Main] Renderer process gone:', details);
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
+    destroyOverlayWindow();
+    stopPythonBackend();
+    app.quit();
   });
 }
 
-// Electron Application Lifecycle
+// ── App Lifecycle ──────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media');
+  });
+
+  startPythonBackend();
   createWindow();
 
   app.on('activate', () => {
@@ -74,96 +221,143 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  destroyOverlayWindow();
+  stopPythonBackend();
+  app.quit();
 });
 
-// IPC Handler: Execute Desktop Agent Task Prompt
-ipcMain.handle('agent:execute-prompt', async (_event, request: ExecutionRequest) => {
-  showScreenGlow(request.prompt);
-  try {
-    return await agentRunner.runTask(
-      request.prompt,
-      (stepUpdate) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('agent:step-update', stepUpdate);
-        }
-        updateScreenGlow(stepUpdate.thought || stepUpdate.actionName);
-      },
-      request.apiKey,
-      request.model
-    );
-  } finally {
-    hideScreenGlow();
-  }
+app.on('before-quit', () => {
+  destroyOverlayWindow();
+  stopPythonBackend();
 });
 
-// IPC Handler: Fetch available Gemini models for a given API key
-ipcMain.handle('gemini:list-models', async (_event, apiKey: string): Promise<{ models: { id: string; displayName: string }[]; error?: string }> => {
+// ── IPC: Execute Chat Prompt (Routed to Python Brain) ─────────────────────────
+ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string }) => {
+  console.log('[agent:execute-prompt] Sending to Python Brain:', JSON.stringify(request.prompt));
   try {
-    const https = await import('https');
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}&pageSize=100`;
-
-    const data = await new Promise<string>((resolve, reject) => {
-      https.get(url, (res) => {
-        let raw = '';
-        res.on('data', (chunk) => { raw += chunk; });
-        res.on('end', () => resolve(raw));
-        res.on('error', reject);
-      }).on('error', reject);
+    showScreenGlow('Thinking…');
+    const res = await fetch(`${BACKEND_HTTP}/api/agent/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: request.prompt }),
     });
 
-    const parsed = JSON.parse(data);
-
-    if (parsed.error) {
-      return { models: [], error: parsed.error.message };
+    if (!res.ok) {
+      throw new Error(`Python backend returned HTTP ${res.status}: ${res.statusText}`);
     }
 
-    // Filter to generativeContent-capable gemini models only
-    const models = (parsed.models || [])
-      .filter((m: { name: string; supportedGenerationMethods?: string[] }) =>
-        m.name.includes('gemini') &&
-        (m.supportedGenerationMethods || []).includes('generateContent')
-      )
-      .map((m: { name: string; displayName?: string }) => ({
-        id: m.name.replace('models/', ''),
-        displayName: m.displayName || m.name.replace('models/', '')
-      }));
-
-    return { models };
+    const data = await res.json() as { success: boolean; message: string; steps?: unknown[]; error?: string };
+    console.log('[agent:execute-prompt] Python Brain answered:', JSON.stringify(data.message));
+    hideScreenGlow();
+    return {
+      success: data.success,
+      message: data.message,
+      steps: data.steps || [],
+      error: data.error,
+    };
   } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    return { models: [], error: errMsg };
+    hideScreenGlow();
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[agent:execute-prompt] Error calling Python Brain:', msg);
+    return { success: false, message: msg, error: msg };
   }
 });
 
-// IPC Handler: Get Configuration
-ipcMain.handle('config:get', async (): Promise<AppConfig> => {
+// ── IPC: Multimodal Audio Transcription (Routed to Python Gemini SDK) ─────────
+ipcMain.handle('voice:transcribe', async (_event, { audioBase64, mimeType }: { audioBase64: string; mimeType: string }) => {
+  if (!audioBase64 || audioBase64.length < 100) {
+    return { success: false, error: 'Audio data is missing or too small.' };
+  }
+
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/voice/transcribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioBase64, mimeType }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Python backend transcribe error (HTTP ${res.status}): ${res.statusText}`);
+    }
+
+    const data = await res.json() as { success: boolean; text?: string; error?: string };
+    return data;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[voice:transcribe] Error:', msg);
+    return { success: false, error: msg };
+  }
+});
+
+// ── IPC: List Models ──────────────────────────────────────────────────────────
+ipcMain.handle('gemini:list-models', async (_event, apiKey?: string) => {
+  try {
+    const url = apiKey ? `${BACKEND_HTTP}/api/models?apiKey=${encodeURIComponent(apiKey)}` : `${BACKEND_HTTP}/api/models`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { models: Array<{ id: string; displayName: string }>; error?: string };
+    return data;
+  } catch (err) {
+    return { models: [], error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+// ── IPC: Native Windows SAPI TTS ─────────────────────────────────────────────
+ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
+  if (!text) return { success: false, error: 'No text to speak' };
+  try {
+    const { execFile } = await import('child_process');
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak(${JSON.stringify(text)})`],
+        { maxBuffer: 1024 * 1024 },
+        (error) => (error ? reject(error) : resolve()),
+      );
+    });
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+// ── IPC: Edge glow ───────────────────────────────────────────────────────────
+ipcMain.handle('agent:listen-start', () => {
+  showScreenGlow('Listening…');
+});
+ipcMain.handle('agent:listen-stop', () => {
+  hideScreenGlow();
+});
+
+// ── IPC: Configuration Management (Routed to Python Backend & .env) ───────────
+ipcMain.handle('config:get', async () => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/config`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.warn('[config:get] Backend not reachable yet, reading from process.env');
+  }
+
   return {
     geminiApiKey: process.env.GEMINI_API_KEY || '',
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     uiaTimeoutMs: parseInt(process.env.UIA_TIMEOUT_MS || '5000', 10),
-    enableVisionFallback: process.env.ENABLE_VISION_FALLBACK !== 'false'
+    enableVisionFallback: process.env.ENABLE_VISION_FALLBACK !== 'false',
   };
 });
 
-// IPC Handler: Save Configuration
-ipcMain.handle('config:save', async (_event, newConfig: Partial<AppConfig>): Promise<boolean> => {
+ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>) => {
   try {
-    if (newConfig.geminiApiKey !== undefined) process.env.GEMINI_API_KEY = newConfig.geminiApiKey;
-    if (newConfig.geminiModel !== undefined) process.env.GEMINI_MODEL = newConfig.geminiModel;
-
-    const envContent = `GEMINI_API_KEY=${process.env.GEMINI_API_KEY || ''}
-GEMINI_MODEL=${process.env.GEMINI_MODEL || 'gemini-2.0-flash'}
-UIA_TIMEOUT_MS=${process.env.UIA_TIMEOUT_MS || '5000'}
-LOG_LEVEL=${process.env.LOG_LEVEL || 'info'}
-ENABLE_VISION_FALLBACK=${process.env.ENABLE_VISION_FALLBACK || 'true'}
-`;
-
-    fs.writeFileSync(envPath, envContent, 'utf-8');
-    return true;
-  } catch {
+    const res = await fetch(`${BACKEND_HTTP}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newConfig),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('[config:save] Error:', err);
     return false;
   }
 });

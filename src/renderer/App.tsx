@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentStatus, AgentStep, AppConfig, ExecutionResponse } from '../shared/types';
+import { VoiceEngine } from './voiceEngine';
 import {
   Bot, Send, Settings, Sun, Moon, CheckCircle2,
   XCircle, Loader2, AlertCircle, Zap, Monitor, Type, Keyboard
@@ -20,6 +21,27 @@ function ipc() {
     console.error('[App] Could not access electron ipcRenderer');
     return null;
   }
+}
+
+/* ── Speak text via native Windows SAPI TTS (main process) ─────── */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')        // remove code blocks
+    .replace(/`[^`]+`/g, '')               // remove inline code
+    .replace(/#{1,6}\s+/g, '')             // remove headings
+    .replace(/\*\*([^*]+)\*\*/g, '$1')     // bold → plain
+    .replace(/\*([^*]+)\*/g, '$1')         // italic → plain
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → label
+    .replace(/[*_~|>#\-=]/g, '')           // remaining markdown chars
+    .replace(/\s{2,}/g, ' ')              // collapse whitespace
+    .trim();
+}
+
+function speak(text: string) {
+  const plain = stripMarkdown(text).slice(0, 600); // cap at 600 chars for TTS
+  if (!plain) return;
+  console.log('[TTS] Speaking:', plain.slice(0, 80) + '…');
+  ipc()?.invoke('voice:speak', { text: plain }).catch((err) => console.error('[App] TTS failed:', err));
 }
 
 /* ── Types ─────────────────────────────────────────────────── */
@@ -46,6 +68,10 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
   press_hotkey:         <Keyboard size={13} />,
   uia_click:            <Zap size={13} />,
   uia_type:             <Type size={13} />,
+  mouse_move:           <Zap size={13} />,
+  mouse_click:          <Zap size={13} />,
+  keyboard_type:        <Type size={13} />,
+  keyboard_key:         <Keyboard size={13} />,
   get_open_windows:     <Monitor size={13} />,
   take_screenshot:      <Bot size={13} />,
 };
@@ -62,12 +88,101 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [config, setConfig] = useState<AppConfig>({
     geminiApiKey: '',
-    geminiModel: 'gemini-2.0-flash',
+    geminiModel: 'gemini-2.5-flash',
     uiaTimeoutMs: 5000,
     enableVisionFallback: true,
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /* ── Voice: native mic + VAD state machine ─────────────────────── */
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<string>('');
+  const engineRef = useRef<VoiceEngine | null>(null);
+  const activatedRef = useRef(false);
+  const sendPromptRef = useRef<(text: string) => void>(() => {});
+
+  const showBorderGlow = useCallback((show: boolean, message?: string) => {
+    if (show) {
+      ipc()?.invoke('agent:listen-start');
+    } else {
+      ipc()?.invoke('agent:listen-stop');
+    }
+    if (message !== undefined) setVoiceStatus(message);
+  }, []);
+
+  useEffect(() => {
+    const engine = new VoiceEngine({
+      onUtterance: async (utterance) => {
+        console.log('[Voice] Utterance captured:', utterance.durationMs, 'ms');
+        showBorderGlow(true, 'Analyzing audio…');
+
+        // Transcribe via Gemini in the main process.
+        const res = await ipc()?.invoke('voice:transcribe', {
+          audioBase64: utterance.wavBase64,
+          mimeType: utterance.mimeType,
+        }) as { success: boolean; text?: string; error?: string } | undefined;
+
+        if (!res?.success || !res.text) {
+          const errorMsg = res?.error || 'Unknown transcription error';
+          console.error('[Voice] Transcription failed:', errorMsg);
+          setVoiceStatus(`Error: ${errorMsg}`);
+          showBorderGlow(false, '');
+          return;
+        }
+
+        const transcript = res.text.trim().replace(/^["']|["']$/g, '').trim();
+        console.log('[Voice] Transcript:', transcript);
+
+        // Extract command if it starts with "hey [name]", or use whole transcript
+        const match = transcript.match(/^(?:\s*hey(?:\s+(?:jave|java|jawa|javi|jarvis|javee|agent|buddy|there))?\b[,\s!?.:]*)/i);
+        let command = transcript;
+        if (match) {
+          command = transcript.slice(match[0].length).trim();
+        }
+
+        activatedRef.current = true;
+        setVoiceActive(true);
+        engine.activate();
+
+        if (command) {
+          console.log('[Voice] Sending command to agent:', command);
+          void sendPromptRef.current(command);
+        } else {
+          showBorderGlow(true, 'Listening…');
+          speak("I'm listening, tell me what you need.");
+        }
+      },
+      onStateChange: (state) => {
+        console.log('[Voice] State:', state);
+        if (state === 'SPEAKING') {
+          showBorderGlow(true, 'User speaking…');
+        } else if (state === 'COUNTDOWN') {
+          showBorderGlow(true, 'Listening…');
+        }
+      },
+      onCountdown: (seconds) => {
+        setVoiceStatus(`Wait ${seconds}…`);
+      },
+      onIdleTimeout: () => {
+        console.log('[Voice] Idle timeout (30s) — deactivating');
+        activatedRef.current = false;
+        setVoiceActive(false);
+        showBorderGlow(false, '');
+        setStatus('idle');
+      },
+    });
+
+    engineRef.current = engine;
+    engine.start()
+      .then(() => console.log('[Voice] Native voice engine started (background listening)'))
+      .catch((err) => console.error('[Voice] Failed to start mic:', err));
+
+    return () => {
+      engine.stop().catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBorderGlow]);
 
   /* Toggle theme */
   const toggleTheme = () => {
@@ -86,7 +201,6 @@ export default function App() {
       if (res) {
         const c = res as AppConfig;
         setConfig(c);
-        if (!c.geminiApiKey) setShowSettings(true);
       }
     }).catch(console.error);
 
@@ -104,6 +218,7 @@ export default function App() {
   }, []);
 
   /* Auto-scroll */
+  const inFlightRef = useRef(false);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -120,12 +235,10 @@ export default function App() {
 
   const sendPrompt = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || isBusy) return;
+    if (!trimmed || inFlightRef.current) return;
+    inFlightRef.current = true;
 
-    if (!config.geminiApiKey) {
-      setShowSettings(true);
-      return;
-    }
+    console.log('[App] sendPrompt started:', trimmed);
 
     const userMsgId  = `u-${Date.now()}`;
     const agentMsgId = `a-${Date.now()}`;
@@ -138,6 +251,7 @@ export default function App() {
     setPrompt('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setStatus('executing');
+    showBorderGlow(true, 'Thinking…');
 
     try {
       const renderer = ipc();
@@ -145,9 +259,9 @@ export default function App() {
 
       const response = await renderer.invoke('agent:execute-prompt', {
         prompt: trimmed,
-        apiKey: config.geminiApiKey,
-        model: config.geminiModel,
       }) as ExecutionResponse;
+
+      console.log('[App] agent:execute-prompt result:', response);
 
       setMessages(prev => prev.map(m =>
         m.id === agentMsgId
@@ -155,18 +269,33 @@ export default function App() {
           : m
       ));
       setStatus(response.success ? 'completed' : 'error');
+
+      // Speak the agent's final answer back via TTS.
+      if (response.success && response.message) {
+        showBorderGlow(true, 'Agent speaking…');
+        speak(response.message);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error('[App] execute-prompt failed:', msg);
       setMessages(prev => prev.map(m =>
         m.id === agentMsgId
           ? { ...m, text: `Error: ${msg}`, status: 'error' }
           : m
       ));
       setStatus('error');
+    } finally {
+      inFlightRef.current = false;
     }
 
-    setTimeout(() => setStatus('idle'), 3000);
-  }, [isBusy, config]);
+    setTimeout(() => {
+      setStatus('idle');
+      showBorderGlow(false, '');
+    }, 3000);
+  }, [config, showBorderGlow]);
+
+  // Keep the voice engine's reference to the latest sendPrompt.
+  sendPromptRef.current = sendPrompt;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -185,6 +314,7 @@ export default function App() {
 
   /* Status label */
   const statusLabel = () => {
+    if (voiceStatus) return voiceStatus;
     if (status === 'executing') return 'Agent is working…';
     if (status === 'completed') return 'Done';
     if (status === 'error') return 'Something went wrong';
@@ -195,8 +325,8 @@ export default function App() {
 
   return (
     <>
-      {/* Window edge animation — visible only while busy */}
-      <div className={`edge-border${isBusy ? ' is-active' : ''}`} />
+      {/* Window edge animation — visible while busy or voice active */}
+      <div className={`edge-border${isBusy || voiceActive ? ' is-active' : ''}`} />
 
       <div className="app">
         {/* ── Top Bar ── */}
@@ -207,8 +337,8 @@ export default function App() {
           </div>
 
           <div className="topbar-center">
-            <div className="model-pill">
-              <span className={`status-dot${dotClass ? ` ${dotClass}` : ''}`} />
+            <div className="model-pill" title={voiceActive ? 'Voice session active' : 'Background voice listening active'}>
+              <span className={`status-dot${voiceActive || isBusy ? ' busy' : ''}${dotClass ? ` ${dotClass}` : ''}`} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {statusLabel()}
               </span>

@@ -5,15 +5,7 @@ import renderer from 'vite-plugin-electron-renderer';
 import path from 'path';
 import pkg from './package.json';
 
-const externalDeps = [
-  'electron',
-  'child_process',
-  'fs',
-  'path',
-  'os',
-  'bufferutil',
-  'utf-8-validate'
-];
+const externalDeps = (id: string) => !id.startsWith('.') && !path.isAbsolute(id);
 
 export default defineConfig({
   base: './',

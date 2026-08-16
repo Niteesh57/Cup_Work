@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Key, Cpu, Save, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { X, Key, Cpu, Save, RefreshCw, CheckCircle2, XCircle, Cloud, Shield } from 'lucide-react';
 import { AppConfig } from '../../shared/types';
 
 function getIpc() {
@@ -26,15 +26,18 @@ interface Props {
 }
 
 export const SettingsModal: React.FC<Props> = ({ config, onClose, onSave }) => {
-  const [apiKey, setApiKey]   = useState(config.geminiApiKey);
-  const [model, setModel]     = useState(config.geminiModel || 'gemini-2.0-flash');
-  const [models, setModels]   = useState<GeminiModel[]>([]);
-  const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [fetchError, setFetchError]   = useState('');
+  const [useVertex, setUseVertex]         = useState(config.useVertexAi || false);
+  const [apiKey, setApiKey]               = useState(config.geminiApiKey || '');
+  const [projectId, setProjectId]         = useState(config.projectId || '');
+  const [location, setLocation]           = useState(config.location || 'us-central1');
+  const [credentialsPath, setCredentials] = useState(config.credentialsPath || '');
+  const [model, setModel]                 = useState(config.geminiModel || 'gemini-2.5-flash');
+  const [models, setModels]               = useState<GeminiModel[]>([]);
+  const [fetchStatus, setFetchStatus]     = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [fetchError, setFetchError]       = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchModels = async (key: string) => {
-    if (!key || key.length < 20) { setModels([]); setFetchStatus('idle'); return; }
     setFetchStatus('loading');
     try {
       const ipc = getIpc();
@@ -44,7 +47,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onClose, onSave }) => {
         return;
       }
       const res = await ipc.invoke('gemini:list-models', key) as { models: GeminiModel[]; error?: string };
-      if (res.error) {
+      if (res.error && (!res.models || res.models.length === 0)) {
         setFetchStatus('error');
         setFetchError(res.error);
         setModels([]);
@@ -52,7 +55,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onClose, onSave }) => {
         setFetchStatus('success');
         setModels(res.models);
         if (res.models.length > 0 && !res.models.find(m => m.id === model)) {
-          const preferred = res.models.find(m => m.id.includes('gemini-2.0-flash'));
+          const preferred = res.models.find(m => m.id.includes('gemini-2.5-flash')) || res.models.find(m => m.id.includes('flash'));
           setModel(preferred?.id || res.models[0].id);
         }
       }
@@ -67,62 +70,125 @@ export const SettingsModal: React.FC<Props> = ({ config, onClose, onSave }) => {
     timer.current = setTimeout(() => fetchModels(apiKey), 600);
   }, [apiKey]);
 
-  // Fetch immediately if we already have a saved key
+  // Fetch immediately on mount
   useEffect(() => {
-    if (config.geminiApiKey) fetchModels(config.geminiApiKey);
+    fetchModels(apiKey);
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ geminiApiKey: apiKey.trim(), geminiModel: model.trim() });
+    onSave({
+      geminiApiKey: apiKey.trim(),
+      geminiModel: model.trim(),
+      useVertexAi: useVertex,
+      projectId: projectId.trim(),
+      location: location.trim(),
+      credentialsPath: credentialsPath.trim(),
+    });
     onClose();
   };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
         <div className="modal-header">
-          <span className="modal-title">Settings</span>
+          <span className="modal-title">Settings & AI Configuration</span>
           <button className="icon-btn" onClick={onClose}><X size={16} /></button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          {/* API Key */}
-          <div className="field">
-            <label><Key size={13} /> Gemini API Key</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                type="password"
-                placeholder="AIzaSy…"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button
-                type="button"
-                className="icon-btn"
-                style={{ border: '1px solid var(--border)', borderRadius: 6, width: 36, height: 36 }}
-                onClick={() => fetchModels(apiKey)}
-                disabled={fetchStatus === 'loading'}
-                title="Refresh models"
-              >
-                <RefreshCw size={14} style={{ animation: fetchStatus === 'loading' ? 'spin 1s linear infinite' : 'none' }} />
-              </button>
-            </div>
-            <span className="field-hint">Get your key at aistudio.google.com</span>
+          {/* Toggle: Gemini API vs Vertex AI */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <button
+              type="button"
+              className={`btn ${!useVertex ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ flex: 1, fontSize: 12, padding: '8px 12px' }}
+              onClick={() => setUseVertex(false)}
+            >
+              <Key size={13} style={{ marginRight: 6 }} />
+              Google AI Studio
+            </button>
+            <button
+              type="button"
+              className={`btn ${useVertex ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ flex: 1, fontSize: 12, padding: '8px 12px' }}
+              onClick={() => setUseVertex(true)}
+            >
+              <Cloud size={13} style={{ marginRight: 6 }} />
+              Google Cloud / Vertex AI
+            </button>
           </div>
+
+          {!useVertex ? (
+            /* API Key Mode */
+            <div className="field">
+              <label><Key size={13} /> Gemini API Key</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="password"
+                  placeholder="AIzaSy…"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  style={{ border: '1px solid var(--border)', borderRadius: 6, width: 36, height: 36 }}
+                  onClick={() => fetchModels(apiKey)}
+                  disabled={fetchStatus === 'loading'}
+                  title="Refresh models"
+                >
+                  <RefreshCw size={14} style={{ animation: fetchStatus === 'loading' ? 'spin 1s linear infinite' : 'none' }} />
+                </button>
+              </div>
+              <span className="field-hint">Get your key at aistudio.google.com</span>
+            </div>
+          ) : (
+            /* Vertex AI Mode */
+            <>
+              <div className="field">
+                <label><Cloud size={13} /> GCP Project ID</label>
+                <input
+                  type="text"
+                  placeholder="my-gcp-project-id"
+                  value={projectId}
+                  onChange={e => setProjectId(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label><Cloud size={13} /> Location / Region</label>
+                <input
+                  type="text"
+                  placeholder="us-central1"
+                  value={location}
+                  onChange={e => setLocation(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label><Shield size={13} /> Service Account Key File Path</label>
+                <input
+                  type="text"
+                  placeholder="C:\path\to\service-account-key.json"
+                  value={credentialsPath}
+                  onChange={e => setCredentials(e.target.value)}
+                />
+                <span className="field-hint">Set to JSON key downloaded from Google Cloud IAM</span>
+              </div>
+            </>
+          )}
 
           {/* Fetch status */}
           {fetchStatus === 'loading' && (
             <div className="fetch-status loading">
               <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} />
-              Fetching models for your API key…
+              Connecting to Python Brain & Gemini…
             </div>
           )}
           {fetchStatus === 'success' && models.length > 0 && (
             <div className="fetch-status success">
               <CheckCircle2 size={12} />
-              {models.length} model{models.length !== 1 ? 's' : ''} available on your account
+              {models.length} model{models.length !== 1 ? 's' : ''} available
             </div>
           )}
           {fetchStatus === 'error' && (
@@ -150,21 +216,21 @@ export const SettingsModal: React.FC<Props> = ({ config, onClose, onSave }) => {
                     </option>
                   ))
                 : <>
-                    <option value="gemini-2.0-flash">gemini-2.0-flash ⚡ (Recommended)</option>
-                    <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite ⚡</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash ⚡</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro 🧠</option>
+                    <option value="gemini-2.5-flash">gemini-2.5-flash ⚡ (Recommended)</option>
+                    <option value="gemini-2.5-pro">gemini-2.5-pro 🧠</option>
+                    <option value="gemini-3.7-flash">gemini-3.7-flash 🚀</option>
+                    <option value="gemini-3.5-flash">gemini-3.5-flash ⚡</option>
+                    <option value="gemini-2.0-flash">gemini-2.0-flash</option>
                   </>
               }
             </select>
-            <span className="field-hint">Enter your API key above to load all models accessible to your account.</span>
           </div>
 
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary">
               <Save size={13} style={{ marginRight: 5 }} />
-              Save
+              Save Settings
             </button>
           </div>
         </form>

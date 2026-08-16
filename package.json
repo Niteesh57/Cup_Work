@@ -6,8 +6,10 @@
   "type": "commonjs",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "backend": "python backend/main.py",
+    "build": "tsc && vite build",
     "build:electron": "npx tsc -p tsconfig.electron.json",
+    "dist": "tsc && vite build && electron-builder --dir",
     "start": "electron ."
   },
   "build": {
@@ -17,7 +19,8 @@
       "output": "release"
     },
     "win": {
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
     }
   },
   "keywords": [
@@ -31,12 +34,14 @@
   "author": "Antigravity",
   "license": "MIT",
   "dependencies": {
+    "@google/adk": "^1.6.0",
     "@google/genai": "^2.16.0",
     "bufferutil": "^4.1.0",
     "dotenv": "^16.4.7",
     "lucide-react": "^0.475.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sql.js": "^1.14.1",
     "utf-8-validate": "^6.0.6"
   },
   "devDependencies": {

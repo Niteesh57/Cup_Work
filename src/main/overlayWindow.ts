@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { HighlightBox, ScreenPadContent } from '../shared/types';
 
 let overlayWindow: BrowserWindow | null = null;
 
@@ -13,10 +14,7 @@ export function createOverlayWindow(): BrowserWindow {
   const { x, y, width, height } = primaryDisplay.bounds;
 
   overlayWindow = new BrowserWindow({
-    x,
-    y,
-    width,
-    height,
+    x, y, width, height,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -32,13 +30,12 @@ export function createOverlayWindow(): BrowserWindow {
     }
   });
 
-  // Screen-saver / Pop-up level keeps the border overlay above Windows taskbar and apps
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
 
-  // Completely forward all mouse & click events to underlying Windows desktop applications
+  // Default: pass mouse through to desktop apps.
+  // ScreenPad interactions temporarily disable this via IPC.
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
 
-  // Locate overlay.html in source or dist output
   const candidates = [
     path.join(__dirname, '../src/renderer/overlay.html'),
     path.join(__dirname, '../../src/renderer/overlay.html'),
@@ -48,13 +45,12 @@ export function createOverlayWindow(): BrowserWindow {
   const htmlPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
   overlayWindow.loadFile(htmlPath);
 
-  overlayWindow.on('closed', () => {
-    overlayWindow = null;
-  });
+  overlayWindow.on('closed', () => { overlayWindow = null; });
 
   return overlayWindow;
 }
 
+// ── Screen Glow Border ────────────────────────────────────────────────────────
 export function showScreenGlow(promptText?: string) {
   try {
     const win = createOverlayWindow();
@@ -91,3 +87,75 @@ export function hideScreenGlow() {
     console.error('[ScreenOverlay] Failed to hide screen glow:', err);
   }
 }
+
+export function destroyOverlayWindow() {
+  try {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.destroy();
+      overlayWindow = null;
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to destroy overlay window:', err);
+  }
+}
+
+// ── ScreenPad ─────────────────────────────────────────────────────────────────
+export function showScreenPad(content: Partial<ScreenPadContent>) {
+  try {
+    const win = createOverlayWindow();
+    if (win && !win.isDestroyed()) {
+      win.showInactive();
+      // Enable mouse events so user can interact with ScreenPad
+      win.setIgnoreMouseEvents(false);
+      win.webContents.send('overlay:screenpad-show', content);
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to show ScreenPad:', err);
+  }
+}
+
+export function closeScreenPad() {
+  try {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('overlay:screenpad-close');
+      // Restore pass-through mouse events
+      overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to close ScreenPad:', err);
+  }
+}
+
+// ── Highlight Boxes ───────────────────────────────────────────────────────────
+export function showHighlightBox(box: Partial<HighlightBox>) {
+  try {
+    const win = createOverlayWindow();
+    if (win && !win.isDestroyed()) {
+      win.showInactive();
+      win.webContents.send('overlay:box-show', box);
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to show highlight box:', err);
+  }
+}
+
+export function closeHighlightBox(id: string) {
+  try {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('overlay:box-close', { id });
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to close highlight box:', err);
+  }
+}
+
+export function clearAllHighlightBoxes() {
+  try {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('overlay:boxes-clear');
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to clear highlight boxes:', err);
+  }
+}
+
