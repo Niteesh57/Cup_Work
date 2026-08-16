@@ -40,6 +40,9 @@ public class NativeBridge {
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
+    public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+
+    [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
@@ -130,6 +133,61 @@ public class NativeBridge {
         return list;
     }
 
+    public static WindowEntry GetActiveWindowEntry() {
+        IntPtr hWnd = GetForegroundWindow();
+        if (hWnd != IntPtr.Zero) {
+            StringBuilder sb = new StringBuilder(512);
+            GetWindowText(hWnd, sb, 512);
+            RECT rect;
+            GetWindowRect(hWnd, out rect);
+            return new WindowEntry {
+                Title = sb.ToString().Trim(),
+                Handle = hWnd,
+                Bounds = rect
+            };
+        }
+        return new WindowEntry { Title = "", Handle = IntPtr.Zero, Bounds = new RECT() };
+    }
+
+    public static bool RestoreWindowByTitle(string titleSubstring) {
+        var windows = GetTopLevelWindows();
+        foreach (var win in windows) {
+            if (win.Title.IndexOf(titleSubstring, StringComparison.OrdinalIgnoreCase) >= 0) {
+                ShowWindow(win.Handle, SW_RESTORE);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static bool ResizeWindowByTitle(string titleSubstring, int x, int y, int width, int height) {
+        var windows = GetTopLevelWindows();
+        foreach (var win in windows) {
+            if (win.Title.IndexOf(titleSubstring, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return MoveWindow(win.Handle, x, y, width, height, true);
+            }
+        }
+        return false;
+    }
+
+    public static bool DragDrop(int x1, int y1, int x2, int y2) {
+        SetCursorPos(x1, y1);
+        System.Threading.Thread.Sleep(30);
+        mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x1, (uint)y1, 0, 0);
+        System.Threading.Thread.Sleep(60);
+        int steps = 40;
+        for (int i = 1; i <= steps; i++) {
+            int mx = x1 + (x2 - x1) * i / steps;
+            int my = y1 + (y2 - y1) * i / steps;
+            SetCursorPos(mx, my);
+            System.Threading.Thread.Sleep(8);
+        }
+        SetCursorPos(x2, y2);
+        System.Threading.Thread.Sleep(30);
+        mouse_event(MOUSEEVENTF_LEFTUP, (uint)x2, (uint)y2, 0, 0);
+        return true;
+    }
+
     public static string CapturePrimaryScreenBase64() {
         try {
             Rectangle bounds = Screen.PrimaryScreen.Bounds;
@@ -146,6 +204,29 @@ public class NativeBridge {
         } catch (Exception ex) {
             return "ERROR: " + ex.Message;
         }
+    }
+
+    public static string CaptureRegionBase64(int x, int y, int width, int height) {
+        try {
+            if (width <= 0 || height <= 0) return "ERROR: invalid region dimensions";
+            using (Bitmap bitmap = new Bitmap(width, height)) {
+                using (Graphics g = Graphics.FromImage(bitmap)) {
+                    g.CopyFromScreen(x, y, 0, 0, new Size(width, height));
+                }
+                using (MemoryStream ms = new MemoryStream()) {
+                    bitmap.Save(ms, ImageFormat.Png);
+                    byte[] imageBytes = ms.ToArray();
+                    return Convert.ToBase64String(imageBytes);
+                }
+            }
+        } catch (Exception ex) {
+            return "ERROR: " + ex.Message;
+        }
+    }
+
+    public static string GetPrimaryScreenResolution() {
+        Rectangle bounds = Screen.PrimaryScreen.Bounds;
+        return bounds.Width + "x" + bounds.Height;
     }
 
     public static bool FocusWindowByTitle(string titleSubstring) {

@@ -159,9 +159,36 @@ function connectWebSocket() {
           mainWindow?.webContents.send('agent:step-update', msg.step);
         }
 
+        // Forward human-in-the-loop questions to the renderer (ScreenPad + voice)
+        if (msg.type === 'HITL_QUESTION') {
+          mainWindow?.webContents.send('agent:hitl-question', msg);
+        }
+
+        // Forward executor state changes
+        if (msg.type === 'STATE_CHANGE') {
+          mainWindow?.webContents.send('agent:state-change', msg);
+        }
+
+        // Forward commentary text
+        if (msg.type === 'COMMENTARY') {
+          mainWindow?.webContents.send('agent:commentary', msg);
+        }
+
+        // Speak TTS requests from the backend
+        if (msg.type === 'TTS_SPEAK') {
+          const text = String(msg.text || '');
+          if (text) {
+            mainWindow?.webContents.send('agent:tts-speak', { text });
+          }
+        }
+
         // Screen glow on task start
         if (msg.type === 'TASK_START') {
           showScreenGlow('Thinking…');
+        }
+
+        if (msg.type === 'TASK_COMPLETED' || msg.type === 'TASK_FAILED') {
+          hideScreenGlow();
         }
       } catch (err) {
         console.error('[Main] Error parsing WebSocket message:', err);
@@ -275,15 +302,20 @@ process.on('SIGTERM', () => {
 });
 
 // ── IPC: Execute Prompt (Routed to Python Agent Brain) ────────────────────────
-ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string; apiKey?: string; model?: string }) => {
-  console.log('[agent:execute-prompt] Sending to Python Brain:', request.prompt);
+ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string; apiKey?: string; model?: string; taskId?: string }) => {
+  console.log('[agent:execute-prompt] Sending to Python Brain:', request.prompt, 'taskId:', request.taskId);
   showScreenGlow('Thinking…');
 
   try {
     const res = await fetch(`${BACKEND_HTTP}/api/agent/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: request.prompt }),
+      body: JSON.stringify({
+        prompt: request.prompt,
+        taskId: request.taskId,
+        model: request.model,
+        apiKey: request.apiKey,
+      }),
     });
 
     if (!res.ok) {
@@ -415,4 +447,39 @@ ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>)
     console.error('[config:save] Error:', err);
     return false;
   }
+});
+
+// ── Task Controls (pause / resume / cancel) ────────────────────────────────
+async function postTaskAction(action: string, taskId: string): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/agent/${action}/${encodeURIComponent(taskId)}`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      return { success: false, message: `Backend returned HTTP ${res.status}` };
+    }
+    return (await res.json()) as { success: boolean; message?: string };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+ipcMain.handle('task:pause', async (_event, taskId: string) => postTaskAction('pause', taskId));
+ipcMain.handle('task:resume', async (_event, taskId: string) => postTaskAction('resume', taskId));
+ipcMain.handle('task:cancel', async (_event, taskId: string) => postTaskAction('cancel', taskId));
+
+// ── Human-in-the-loop response (ScreenPad button or voice answer) ──────────
+ipcMain.handle('agent:human-response', async (_event, payload: { id?: string; taskId?: string; answer: string }) => {
+  const msg = {
+    type: 'HUMAN_RESPONSE',
+    id: payload.id || '',
+    taskId: payload.taskId || '',
+    answer: payload.answer,
+  };
+
+  if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+    wsClient.send(JSON.stringify(msg));
+    return { success: true };
+  }
+  return { success: false, message: 'Backend WebSocket is not connected' };
 });

@@ -240,7 +240,157 @@ DESKTOP_FUNCTION_DECLARATIONS = [
             },
             required=["seconds"]
         )
-    )
+    ),
+    types.FunctionDeclaration(
+        name="get_active_window",
+        description="Returns the title and bounds of the current foreground window.",
+        parameters=types.Schema(type=types.Type.OBJECT, properties={})
+    ),
+    types.FunctionDeclaration(
+        name="restore_window",
+        description="Restores a minimized window by matching its title.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "windowTitle": types.Schema(type=types.Type.STRING, description="Title or partial title of the window to restore")
+            },
+            required=["windowTitle"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="resize_window",
+        description="Sets the position and size of a window by title.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "windowTitle": types.Schema(type=types.Type.STRING, description="Title or partial title of the window"),
+                "x": types.Schema(type=types.Type.INTEGER, description="Left position in pixels"),
+                "y": types.Schema(type=types.Type.INTEGER, description="Top position in pixels"),
+                "width": types.Schema(type=types.Type.INTEGER, description="Width in pixels"),
+                "height": types.Schema(type=types.Type.INTEGER, description="Height in pixels")
+            },
+            required=["windowTitle", "x", "y", "width", "height"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="read_clipboard",
+        description="Returns the current clipboard text.",
+        parameters=types.Schema(type=types.Type.OBJECT, properties={})
+    ),
+    types.FunctionDeclaration(
+        name="write_clipboard",
+        description="Sets the clipboard to the given text.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "text": types.Schema(type=types.Type.STRING, description="Text to copy to the clipboard")
+            },
+            required=["text"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="execute_command",
+        description="Runs a shell command and returns stdout, stderr, and exit code. Non-allowlisted commands require user confirmation.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "command": types.Schema(type=types.Type.STRING, description="Shell command to execute"),
+                "timeoutSeconds": types.Schema(type=types.Type.INTEGER, description="Optional timeout in seconds")
+            },
+            required=["command"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="get_process_list",
+        description="Returns running processes with name, PID, CPU, and memory.",
+        parameters=types.Schema(type=types.Type.OBJECT, properties={})
+    ),
+    types.FunctionDeclaration(
+        name="kill_process",
+        description="Terminates a process by name or PID. Always requires user confirmation.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "name": types.Schema(type=types.Type.STRING, description="Process name"),
+                "pid": types.Schema(type=types.Type.INTEGER, description="Process ID")
+            }
+        )
+    ),
+    types.FunctionDeclaration(
+        name="screenshot_region",
+        description="Captures a specific screen region as base64 PNG.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "x": types.Schema(type=types.Type.INTEGER, description="Left position in pixels"),
+                "y": types.Schema(type=types.Type.INTEGER, description="Top position in pixels"),
+                "width": types.Schema(type=types.Type.INTEGER, description="Width in pixels"),
+                "height": types.Schema(type=types.Type.INTEGER, description="Height in pixels")
+            },
+            required=["x", "y", "width", "height"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="get_screen_resolution",
+        description="Returns the width and height of the primary display.",
+        parameters=types.Schema(type=types.Type.OBJECT, properties={})
+    ),
+    types.FunctionDeclaration(
+        name="drag_drop",
+        description="Drags the mouse from (x1,y1) to (x2,y2) and drops.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "x1": types.Schema(type=types.Type.INTEGER, description="Start X"),
+                "y1": types.Schema(type=types.Type.INTEGER, description="Start Y"),
+                "x2": types.Schema(type=types.Type.INTEGER, description="End X"),
+                "y2": types.Schema(type=types.Type.INTEGER, description="End Y")
+            },
+            required=["x1", "y1", "x2", "y2"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="uia_get_tree",
+        description="Dumps the UIA element tree of the focused window as JSON.",
+        parameters=types.Schema(type=types.Type.OBJECT, properties={})
+    ),
+    types.FunctionDeclaration(
+        name="uia_get_text",
+        description="Reads text from a named UIA element.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "elementName": types.Schema(type=types.Type.STRING, description="Accessible name of the element")
+            },
+            required=["elementName"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="show_annotations",
+        description="Draws multiple colored boxes, arrows, and step labels on screen.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "boxes": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.OBJECT),
+                    description="Array of boxes with x, y, width, height, color, label, stepNumber"
+                ),
+                "arrows": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.OBJECT),
+                    description="Array of arrows with fromX, fromY, toX, toY, color, label"
+                ),
+                "durationSeconds": types.Schema(type=types.Type.NUMBER, description="Auto-dismiss seconds (0 = wait for click/ESC)")
+            },
+            required=["boxes"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="clear_annotations",
+        description="Programmatically closes all active annotation overlay windows.",
+        parameters=types.Schema(type=types.Type.OBJECT, properties={})
+    ),
 ]
 
 def get_desktop_tools() -> List[types.Tool]:

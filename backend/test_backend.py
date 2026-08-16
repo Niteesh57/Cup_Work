@@ -12,7 +12,7 @@ from backend.core.client import GenAIClientManager, get_genai_client
 from backend.storage.sqlite_store import sqlite_store
 from backend.memory.memory_manager import memory_manager
 from backend.tools.definitions import get_desktop_tools
-from backend.agent.brain import agent_brain
+from backend.agent.executor import main_executor_agent
 from backend.agent.voice_transcriber import voice_transcriber
 from backend.bridge.electron_bridge import electron_bridge
 
@@ -52,12 +52,12 @@ async def run_tests():
         print(f"Tool execution warning: {e}")
 
     print("\n=== 6. Testing Conversational Agent Prompt Execution ===")
-    result = await agent_brain.execute_prompt(
+    result = await main_executor_agent.execute_prompt(
         prompt="Hi Hey Jave, reply with 'Hello from Python Brain!' and nothing else.",
         task_id="test-task-1",
         user_id="test-user"
     )
-    print(f"Agent Brain result: success={result['success']}, message={result['message']}")
+    print(f"Executor result: success={result['success']}, message={result['message']}")
 
     print("\n=== ALL BACKEND TESTS PASSED SUCCESSFULLY! ===")
 

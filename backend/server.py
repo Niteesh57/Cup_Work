@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,15 +9,26 @@ from pydantic import BaseModel
 
 from backend.config import config
 from backend.core.client import GenAIClientManager
-from backend.agent.brain import agent_brain
+from backend.agent.executor import main_executor_agent, executor_manager
 from backend.agent.voice_transcriber import voice_transcriber
+from backend.agent.hitl_manager import hitl_manager
 from backend.bridge.electron_bridge import electron_bridge
+from backend.events.event_bus import EventType, event_bus
+from backend.events.commentary import commentary_translator
 from backend.memory.memory_manager import memory_manager
+from backend.adk_runner import adk_runner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("hey_jave.server")
 
-app = FastAPI(title="Hey Jave Brain Server", version="2.0.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await commentary_translator.start()
+    yield
+
+
+app = FastAPI(title="Hey Jave Brain Server", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,6 +37,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Event Bus → Electron WebSocket Forwarder ────────────────────────────────
+async def _forward_event_to_electron(event_type: str, payload: Dict[str, Any]) -> None:
+    await electron_bridge.broadcast({"type": event_type, **payload})
+
+
+# Forward only the events the renderer/main process consumes.
+for _event_type in (
+    EventType.TTS_SPEAK,
+    EventType.HITL_QUESTION,
+    EventType.COMMENTARY,
+    EventType.STATE_CHANGE,
+    EventType.TASK_COMPLETED,
+    EventType.TASK_FAILED,
+):
+    event_bus.subscribe(_event_type, _forward_event_to_electron)
 
 # ── Pydantic Request Models ───────────────────────────────────────────────────
 class ChatRequest(BaseModel):
@@ -82,19 +111,52 @@ async def get_models(apiKey: Optional[str] = None):
 @app.post("/api/agent/chat")
 async def execute_chat(req: ChatRequest):
     logger.info(f"Received chat request: {req.prompt}")
-    res = await agent_brain.execute_prompt(
-        prompt=req.prompt,
-        task_id=req.taskId,
-        user_id=req.userId or "default",
-        model=req.model,
-        api_key=req.apiKey,
-    )
-    return res
+    if req.model:
+        # Model overrides are only supported by the direct executor path.
+        res = await main_executor_agent.execute_prompt(
+            prompt=req.prompt,
+            task_id=req.taskId,
+            user_id=req.userId or "default",
+            model=req.model,
+        )
+        return res
+
+    # Route through the ADK root agent when no model override is requested.
+    try:
+        res = await adk_runner.run(
+            prompt=req.prompt,
+            user_id=req.userId or "default",
+            task_id=req.taskId,
+        )
+        return res
+    except Exception as e:
+        logger.exception(f"ADK route failed, falling back to direct executor: {e}")
+        res = await main_executor_agent.execute_prompt(
+            prompt=req.prompt,
+            task_id=req.taskId,
+            user_id=req.userId or "default",
+        )
+        return res
 
 @app.post("/api/agent/stop")
 async def stop_chat(req: StopRequest):
-    agent_brain.stop_task(req.taskId)
+    executor_manager.cancel(req.taskId)
     return {"success": True, "taskId": req.taskId}
+
+@app.post("/api/agent/pause/{task_id}")
+async def pause_task(task_id: str):
+    ok = executor_manager.pause(task_id)
+    return {"success": ok, "taskId": task_id, "message": "Paused" if ok else "Task not found"}
+
+@app.post("/api/agent/resume/{task_id}")
+async def resume_task(task_id: str):
+    ok = executor_manager.resume(task_id)
+    return {"success": ok, "taskId": task_id, "message": "Resumed" if ok else "Task not found"}
+
+@app.post("/api/agent/cancel/{task_id}")
+async def cancel_task(task_id: str):
+    ok = executor_manager.cancel(task_id)
+    return {"success": ok, "taskId": task_id, "message": "Cancelled" if ok else "Task not found"}
 
 # ── Multimodal Voice Transcription ────────────────────────────────────────────
 @app.post("/api/voice/transcribe")
@@ -190,6 +252,14 @@ async def websocket_endpoint(websocket: WebSocket):
             raw_text = await websocket.receive_text()
             try:
                 data = json.loads(raw_text)
+                msg_type = data.get("type")
+                if msg_type == "HUMAN_RESPONSE":
+                    response_id = str(data.get("id", ""))
+                    answer = str(data.get("answer", data.get("result", "")))
+                    if response_id:
+                        hitl_manager.resolve(response_id, answer)
+                    else:
+                        hitl_manager.resolve_pending_by_task(str(data.get("taskId", "")), answer)
                 electron_bridge.handle_client_message(data)
             except json.JSONDecodeError:
                 logger.warning(f"Received invalid JSON on websocket: {raw_text}")

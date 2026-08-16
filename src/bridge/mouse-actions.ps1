@@ -33,3 +33,12 @@ function Invoke-Scroll ($params) {
     [NativeBridge]::ScrollMouse($delta, $x, $y)
     return @{ success = $true; message = "Scrolled mouse wheel by $delta" }
 }
+
+function Invoke-DragDrop ($params) {
+    $x1 = [int]$params.x1
+    $y1 = [int]$params.y1
+    $x2 = [int]$params.x2
+    $y2 = [int]$params.y2
+    [NativeBridge]::DragDrop($x1, $y1, $x2, $y2)
+    return @{ success = $true; message = "Dragged from ($x1,$y1) to ($x2,$y2)" }
+}

@@ -27,6 +27,8 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $scriptDir "keyboard-actions.ps1")
 . (Join-Path $scriptDir "uia-actions.ps1")
 . (Join-Path $scriptDir "screen-capture.ps1")
+. (Join-Path $scriptDir "clipboard-actions.ps1")
+. (Join-Path $scriptDir "shell-actions.ps1")
 
 function Parse-CommandPayload {
     # 1. Direct -Base64 parameter
@@ -106,16 +108,20 @@ function Execute-Command ($cmdObj) {
 
     switch ($action) {
         # Window & Application Management
-        "MINIMIZE_ALL"     { return Invoke-MinimizeAll }
-        "MINIMIZE_WINDOW"  { return Invoke-MinimizeWindow -params $params }
-        "FOCUS_WINDOW"     { return Invoke-FocusWindow -params $params }
-        "LAUNCH_APP"       { return Invoke-LaunchApp -params $params }
-        "GET_WINDOWS"      { return Invoke-GetWindows }
+        "MINIMIZE_ALL"      { return Invoke-MinimizeAll }
+        "MINIMIZE_WINDOW"   { return Invoke-MinimizeWindow -params $params }
+        "FOCUS_WINDOW"      { return Invoke-FocusWindow -params $params }
+        "LAUNCH_APP"        { return Invoke-LaunchApp -params $params }
+        "GET_WINDOWS"       { return Invoke-GetWindows }
+        "GET_ACTIVE_WINDOW" { return Invoke-GetActiveWindow }
+        "RESTORE_WINDOW"    { return Invoke-RestoreWindow -params $params }
+        "RESIZE_WINDOW"     { return Invoke-ResizeWindow -params $params }
 
         # Mouse Interactions
         "MOUSE_MOVE"       { return Invoke-MouseMove -params $params }
         "MOUSE_CLICK"      { return Invoke-MouseClick -params $params }
         "SCROLL"           { return Invoke-Scroll -params $params }
+        "DRAG_DROP"        { return Invoke-DragDrop -params $params }
 
         # Keyboard Input & Shortcuts
         "KEYBOARD_TYPE"    { return Invoke-KeyboardType -params $params }
@@ -125,9 +131,22 @@ function Execute-Command ($cmdObj) {
         # UI Automation Tree
         "UIA_CLICK"        { return Invoke-UiaClick -params $params }
         "UIA_TYPE"         { return Invoke-UiaType -params $params }
+        "UIA_GET_TREE"     { return Invoke-UiaGetTree -params $params }
+        "UIA_GET_TEXT"     { return Invoke-UiaGetText -params $params }
 
         # Screen Capture
-        "TAKE_SCREENSHOT"  { return Invoke-TakeScreenshot }
+        "TAKE_SCREENSHOT"       { return Invoke-TakeScreenshot }
+        "SCREENSHOT_REGION"     { return Invoke-ScreenshotRegion -params $params }
+        "GET_SCREEN_RESOLUTION" { return Invoke-GetScreenResolution }
+
+        # Clipboard
+        "READ_CLIPBOARD"  { return Invoke-ReadClipboard }
+        "WRITE_CLIPBOARD" { return Invoke-WriteClipboard -params $params }
+
+        # Shell & Process Management
+        "EXECUTE_COMMAND"  { return Invoke-ExecuteCommand -params $params }
+        "GET_PROCESS_LIST" { return Invoke-GetProcessList }
+        "KILL_PROCESS"     { return Invoke-KillProcess -params $params }
 
         # Interactive Scratchpad & Question Overlay
         "SHOW_SCRATCHPAD"  {
@@ -160,6 +179,15 @@ function Execute-Command ($cmdObj) {
                 return ($res | ConvertFrom-Json)
             } catch {
                 return @{ success = $true; message = "Annotations closed"; raw = $res }
+            }
+        }
+        "CLEAR_ANNOTATIONS" {
+            $annotPath = Join-Path $scriptDir "screen-annotations.ps1"
+            $res = & powershell -NoProfile -ExecutionPolicy Bypass -File $annotPath -ClearOnly
+            try {
+                return ($res | ConvertFrom-Json)
+            } catch {
+                return @{ success = $true; message = "Annotations cleared"; raw = $res }
             }
         }
         "HIGHLIGHT_BOX" {

@@ -65,9 +65,49 @@ class SqliteStore:
                     details TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS preferences (
+                    user_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    confidence REAL DEFAULT 1.0,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, key)
+                );
+
+                CREATE TABLE IF NOT EXISTS agent_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    goal TEXT,
+                    status TEXT,
+                    current_state TEXT,
+                    context_snapshot TEXT,
+                    started_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS clarifications (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    question TEXT,
+                    answer TEXT,
+                    saved_as_preference INTEGER DEFAULT 0,
+                    asked_at INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS hitl_queue (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    question TEXT,
+                    options TEXT,
+                    status TEXT NOT NULL,
+                    answer TEXT,
+                    created_at INTEGER NOT NULL,
+                    answered_at INTEGER
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_short_memory_user ON short_memory(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_long_memory_user ON long_memory(user_id);
                 CREATE INDEX IF NOT EXISTS idx_logs_task ON execution_logs(task_id);
+                CREATE INDEX IF NOT EXISTS idx_hitl_status ON hitl_queue(status);
             """)
             conn.commit()
 
@@ -152,5 +192,134 @@ class SqliteStore:
                 (task_id, timestamp_ms, level, message, json.dumps(details) if details else None)
             )
             conn.commit()
+
+    # Preferences
+    def set_preference(self, user_id: str, key: str, value: str, confidence: float = 1.0, timestamp_ms: int = 0):
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO preferences (user_id, key, value, confidence, updated_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, "
+                "confidence = excluded.confidence, updated_at = excluded.updated_at",
+                (user_id, key, value, confidence, timestamp_ms)
+            )
+            conn.commit()
+
+    def get_preference(self, user_id: str, key: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                "SELECT value, confidence, updated_at FROM preferences WHERE user_id = ? AND key = ?",
+                (user_id, key)
+            )
+            row = cur.fetchone()
+            if row:
+                return {"value": row["value"], "confidence": row["confidence"], "updatedAt": row["updated_at"]}
+            return None
+
+    def get_all_preferences(self, user_id: str) -> Dict[str, str]:
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT key, value FROM preferences WHERE user_id = ?", (user_id,))
+            return {r["key"]: r["value"] for r in cur.fetchall()}
+
+    # Agent Sessions
+    def save_agent_session(self, session_id: str, goal: str, status: str, current_state: str, context_snapshot: Optional[Dict[str, Any]] = None, timestamp_ms: int = 0):
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO agent_sessions (session_id, goal, status, current_state, context_snapshot, started_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET goal = excluded.goal, status = excluded.status, "
+                "current_state = excluded.current_state, context_snapshot = excluded.context_snapshot, "
+                "updated_at = excluded.updated_at",
+                (session_id, goal, status, current_state, json.dumps(context_snapshot) if context_snapshot else None, timestamp_ms, timestamp_ms)
+            )
+            conn.commit()
+
+    def get_agent_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM agent_sessions WHERE session_id = ?", (session_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "sessionId": row["session_id"],
+                "goal": row["goal"],
+                "status": row["status"],
+                "currentState": row["current_state"],
+                "contextSnapshot": json.loads(row["context_snapshot"]) if row["context_snapshot"] else None,
+                "startedAt": row["started_at"],
+                "updatedAt": row["updated_at"],
+            }
+
+    def update_agent_session_status(self, session_id: str, status: str, current_state: Optional[str] = None, timestamp_ms: int = 0):
+        with self._get_connection() as conn:
+            if current_state is None:
+                conn.execute(
+                    "UPDATE agent_sessions SET status = ?, updated_at = ? WHERE session_id = ?",
+                    (status, timestamp_ms, session_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE agent_sessions SET status = ?, current_state = ?, updated_at = ? WHERE session_id = ?",
+                    (status, current_state, timestamp_ms, session_id)
+                )
+            conn.commit()
+
+    # Clarifications
+    def add_clarification(self, clarification_id: str, task_id: str, question: str, answer: str, saved_as_preference: int, timestamp_ms: int):
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO clarifications (id, task_id, question, answer, saved_as_preference, asked_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (clarification_id, task_id, question, answer, saved_as_preference, timestamp_ms)
+            )
+            conn.commit()
+
+    def get_clarifications(self, task_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM clarifications WHERE task_id = ? ORDER BY asked_at ASC", (task_id,))
+            return [
+                {
+                    "id": r["id"],
+                    "taskId": r["task_id"],
+                    "question": r["question"],
+                    "answer": r["answer"],
+                    "savedAsPreference": r["saved_as_preference"],
+                    "askedAt": r["asked_at"],
+                }
+                for r in cur.fetchall()
+            ]
+
+    # HITL Queue
+    def enqueue_hitl(self, hitl_id: str, task_id: str, question: str, options: Optional[List[str]], status: str, timestamp_ms: int):
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO hitl_queue (id, task_id, question, options, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (hitl_id, task_id, question, json.dumps(options) if options else None, status, timestamp_ms)
+            )
+            conn.commit()
+
+    def resolve_hitl(self, hitl_id: str, answer: str, timestamp_ms: int):
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE hitl_queue SET status = 'answered', answer = ?, answered_at = ? WHERE id = ?",
+                (answer, timestamp_ms, hitl_id)
+            )
+            conn.commit()
+
+    def get_pending_hitl(self, task_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                "SELECT * FROM hitl_queue WHERE task_id = ? AND status = 'pending' ORDER BY created_at ASC",
+                (task_id,)
+            )
+            return [
+                {
+                    "id": r["id"],
+                    "taskId": r["task_id"],
+                    "question": r["question"],
+                    "options": json.loads(r["options"]) if r["options"] else [],
+                    "status": r["status"],
+                    "createdAt": r["created_at"],
+                }
+                for r in cur.fetchall()
+            ]
 
 sqlite_store = SqliteStore()

@@ -152,6 +152,104 @@ export class UiaBridge {
   }
 
   /**
+   * Returns current foreground window title + bounds
+   */
+  public async getActiveWindow(): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('GET_ACTIVE_WINDOW');
+  }
+
+  /**
+   * Restores a minimized window by title
+   */
+  public async restoreWindow(title: string): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('RESTORE_WINDOW', { title });
+  }
+
+  /**
+   * Sets window x,y,width,height
+   */
+  public async resizeWindow(title: string, x: number, y: number, width: number, height: number): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('RESIZE_WINDOW', { title, x, y, width, height });
+  }
+
+  /**
+   * Reads current clipboard text
+   */
+  public async readClipboard(): Promise<{ success: boolean; text?: string; message?: string }> {
+    return this.executeCommand<{ success: boolean; text?: string; message?: string }>('READ_CLIPBOARD');
+  }
+
+  /**
+   * Writes text to clipboard
+   */
+  public async writeClipboard(text: string): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('WRITE_CLIPBOARD', { text });
+  }
+
+  /**
+   * Runs a shell command and returns stdout/stderr/exitCode
+   */
+  public async runShellCommand(command: string, timeoutSeconds = 30): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('EXECUTE_COMMAND', { command, timeoutSeconds });
+  }
+
+  /**
+   * Returns running processes
+   */
+  public async getProcessList(): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('GET_PROCESS_LIST');
+  }
+
+  /**
+   * Terminates a process by name or PID
+   */
+  public async killProcess(name?: string, pid?: number): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('KILL_PROCESS', { name, pid });
+  }
+
+  /**
+   * Captures a screen region as base64 PNG
+   */
+  public async screenshotRegion(x: number, y: number, width: number, height: number): Promise<{ success: boolean; base64?: string; message?: string }> {
+    return this.executeCommand<{ success: boolean; base64?: string; message?: string }>('SCREENSHOT_REGION', { x, y, width, height });
+  }
+
+  /**
+   * Returns primary display resolution
+   */
+  public async getScreenResolution(): Promise<{ success: boolean; width?: number; height?: number; message?: string }> {
+    return this.executeCommand<{ success: boolean; width?: number; height?: number; message?: string }>('GET_SCREEN_RESOLUTION');
+  }
+
+  /**
+   * Performs a drag-drop from (x1,y1) to (x2,y2)
+   */
+  public async dragDrop(x1: number, y1: number, x2: number, y2: number): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('DRAG_DROP', { x1, y1, x2, y2 });
+  }
+
+  /**
+   * Dumps the UIA element tree of the focused window as JSON
+   */
+  public async uiaGetTree(): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_GET_TREE');
+  }
+
+  /**
+   * Reads text from a named UIA element
+   */
+  public async uiaGetText(name: string): Promise<{ success: boolean; text?: string; message?: string }> {
+    return this.executeCommand<{ success: boolean; text?: string; message?: string }>('UIA_GET_TEXT', { name });
+  }
+
+  /**
+   * Programmatically closes all annotation overlay windows
+   */
+  public async clearAnnotations(): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('CLEAR_ANNOTATIONS');
+  }
+
+  /**
    * Scrolls the mouse wheel by delta clicks, optionally moving to (x, y) first.
    */
   public async scroll(delta: number, x?: number, y?: number): Promise<UiaActionResult> {
@@ -228,6 +326,62 @@ export class UiaBridge {
         return (await this.keyboardKey(String(args.key || ''))) as unknown as Record<string, unknown>;
       case 'get_open_windows':
         return (await this.getWindows()) as unknown as Record<string, unknown>;
+      case 'get_active_window':
+        return (await this.getActiveWindow()) as unknown as Record<string, unknown>;
+      case 'restore_window':
+        return (await this.restoreWindow(String(args.windowTitle || args.title || ''))) as unknown as Record<string, unknown>;
+      case 'resize_window':
+        return (await this.resizeWindow(
+          String(args.windowTitle || args.title || ''),
+          Number(args.x),
+          Number(args.y),
+          Number(args.width),
+          Number(args.height)
+        )) as unknown as Record<string, unknown>;
+      case 'read_clipboard':
+        return (await this.readClipboard()) as unknown as Record<string, unknown>;
+      case 'write_clipboard':
+        return (await this.writeClipboard(String(args.text || ''))) as unknown as Record<string, unknown>;
+      case 'execute_command':
+        return (await this.runShellCommand(
+          String(args.command || ''),
+          args.timeoutSeconds !== undefined ? Number(args.timeoutSeconds) : 30
+        )) as unknown as Record<string, unknown>;
+      case 'get_process_list':
+        return (await this.getProcessList()) as unknown as Record<string, unknown>;
+      case 'kill_process':
+        return (await this.killProcess(
+          args.name !== undefined ? String(args.name) : undefined,
+          args.pid !== undefined ? Number(args.pid) : undefined
+        )) as unknown as Record<string, unknown>;
+      case 'screenshot_region':
+        return (await this.screenshotRegion(
+          Number(args.x),
+          Number(args.y),
+          Number(args.width),
+          Number(args.height)
+        )) as unknown as Record<string, unknown>;
+      case 'get_screen_resolution':
+        return (await this.getScreenResolution()) as unknown as Record<string, unknown>;
+      case 'drag_drop':
+        return (await this.dragDrop(
+          Number(args.x1),
+          Number(args.y1),
+          Number(args.x2),
+          Number(args.y2)
+        )) as unknown as Record<string, unknown>;
+      case 'uia_get_tree':
+        return (await this.uiaGetTree()) as unknown as Record<string, unknown>;
+      case 'uia_get_text':
+        return (await this.uiaGetText(String(args.elementName || args.name || ''))) as unknown as Record<string, unknown>;
+      case 'show_annotations':
+        return (await this.showAnnotations(
+          Array.isArray(args.boxes) ? (args.boxes as Array<Record<string, unknown>>) : [],
+          Array.isArray(args.arrows) ? (args.arrows as Array<Record<string, unknown>>) : [],
+          args.durationSeconds !== undefined ? Number(args.durationSeconds) : 6
+        )) as unknown as Record<string, unknown>;
+      case 'clear_annotations':
+        return (await this.clearAnnotations()) as unknown as Record<string, unknown>;
       case 'take_screenshot':
         return (await this.takeScreenshot()) as unknown as Record<string, unknown>;
       case 'scroll':

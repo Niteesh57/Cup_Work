@@ -1,6 +1,38 @@
 // ── Agent Status (legacy, kept for compatibility) ────────────────────────────
 export type AgentStatus = 'idle' | 'analyzing' | 'executing' | 'verifying' | 'completed' | 'error';
 
+// ── Executor State Machine ───────────────────────────────────────────────────
+export type ExecutorState =
+  | 'observing'
+  | 'analyzing'
+  | 'planning'
+  | 'safety_check'
+  | 'waiting_hitl'
+  | 'paused'
+  | 'acting'
+  | 'verifying'
+  | 'completed'
+  | 'failed';
+
+// ── HITL Question ────────────────────────────────────────────────────────────
+export interface HitlQuestion {
+  id: string;
+  taskId: string;
+  question: string;
+  options: string[];
+}
+
+// ── Commentary ───────────────────────────────────────────────────────────────
+export interface CommentaryPayload {
+  text: string;
+}
+
+// ── State Change ─────────────────────────────────────────────────────────────
+export interface StateChangePayload {
+  taskId: string;
+  state: ExecutorState;
+}
+
 // ── Agent Types ───────────────────────────────────────────────────────────────
 export type AgentType =
   | 'orchestrator' | 'execution' | 'research'

@@ -58,3 +58,61 @@ function Invoke-UiaType ($params) {
         return @{ success = $false; method = "SEND_INPUT"; message = "Failed to type text using SendKeys: $_" }
     }
 }
+
+function ConvertTo-UiaNode {
+    param($Element, [int]$Depth = 0, [int]$MaxDepth = 6)
+    if ($null -eq $Element -or $Depth -gt $MaxDepth) { return $null }
+
+    $node = @{
+        name = $Element.Current.Name
+        controlType = $Element.Current.ControlType.ProgrammaticName
+        automationId = $Element.Current.AutomationId
+        className = $Element.Current.ClassName
+    }
+
+    $children = @()
+    $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+    $child = $walker.GetFirstChild($Element)
+    while ($null -ne $child -and $children.Count -lt 40) {
+        $childNode = ConvertTo-UiaNode -Element $child -Depth ($Depth + 1) -MaxDepth $MaxDepth
+        if ($null -ne $childNode) { $children += $childNode }
+        $child = $walker.GetNextSibling($child)
+    }
+    if ($children.Count -gt 0) { $node.children = $children }
+
+    return $node
+}
+
+function Invoke-UiaGetTree ($params) {
+    try {
+        $root = [System.Windows.Automation.AutomationElement]::RootElement
+        $window = [System.Windows.Automation.AutomationElement]::FocusedElement
+        if ($null -eq $window) { $window = $root }
+        $tree = ConvertTo-UiaNode -Element $window -MaxDepth 6
+        return @{ success = $true; tree = $tree; message = "Captured UIA tree of focused element" }
+    } catch {
+        return @{ success = $false; message = "Failed to get UIA tree: $_" }
+    }
+}
+
+function Invoke-UiaGetText ($params) {
+    $name = $params.name
+    if (-not $name) {
+        return @{ success = $false; message = "Missing element name" }
+    }
+
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $name)
+    $element = $root.FindFirst([System.Windows.Automation.TreeScope]::Subtree, $cond)
+
+    if ($null -eq $element) {
+        return @{ success = $false; message = "Element '$name' not found" }
+    }
+
+    $text = $element.Current.Name
+    $valPattern = $null
+    if ($element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$valPattern)) {
+        $text = ($valPattern -as [System.Windows.Automation.ValuePattern]).Current.Value
+    }
+    return @{ success = $true; text = $text; message = "Read text from '$name'" }
+}

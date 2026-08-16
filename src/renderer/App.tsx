@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AgentStatus, AgentStep, AppConfig, ExecutionResponse } from '../shared/types';
+import { AgentStatus, AgentStep, AppConfig, ExecutionResponse, ExecutorState, HitlQuestion } from '../shared/types';
 import { VoiceEngine } from './voiceEngine';
 import {
   Bot, Send, Settings, Sun, Moon, CheckCircle2,
   XCircle, Loader2, Zap, Monitor, Type, Keyboard
 } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
+import { TaskControls } from './components/TaskControls';
+import { AgentStateBar } from './components/AgentStateBar';
+import { CommentaryBanner } from './components/CommentaryBanner';
 import appIconUrl from './assets/icon.png';
 
 /* ── Safe IPC accessor (lazy — avoids module-level crash) ────── */
@@ -91,6 +94,10 @@ export default function App() {
   const [prompt, setPrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [executorState, setExecutorState] = useState<ExecutorState>('observing');
+  const [activeTaskId, setActiveTaskId] = useState<string>('');
+  const [hitlQuestion, setHitlQuestion] = useState<HitlQuestion | null>(null);
+  const [commentary, setCommentary] = useState('');
   const [config, setConfig] = useState<AppConfig>({
     geminiModel: 'gemini-2.5-flash',
   });
@@ -227,12 +234,41 @@ export default function App() {
       }
     };
 
+    const onStateChange = (_: unknown, data: unknown) => {
+      const st = data as { taskId: string; state: ExecutorState };
+      setActiveTaskId(st.taskId);
+      setExecutorState(st.state);
+      if (st.state === 'waiting_hitl') setStatus('verifying');
+    };
+
+    const onHitlQuestion = (_: unknown, data: unknown) => {
+      setHitlQuestion(data as HitlQuestion);
+    };
+
+    const onCommentary = (_: unknown, data: unknown) => {
+      const c = data as { text: string };
+      setCommentary(c.text);
+    };
+
+    const onTtsSpeak = (_: unknown, data: unknown) => {
+      const c = data as { text: string };
+      if (c.text) void speak(c.text);
+    };
+
     renderer.on('agent:step-update', onStep);
     renderer.on('backend:status', onBackendStatus);
+    renderer.on('agent:state-change', onStateChange);
+    renderer.on('agent:hitl-question', onHitlQuestion);
+    renderer.on('agent:commentary', onCommentary);
+    renderer.on('agent:tts-speak', onTtsSpeak);
 
     return () => {
       renderer.removeAllListeners('agent:step-update');
       renderer.removeAllListeners('backend:status');
+      renderer.removeAllListeners('agent:state-change');
+      renderer.removeAllListeners('agent:hitl-question');
+      renderer.removeAllListeners('agent:commentary');
+      renderer.removeAllListeners('agent:tts-speak');
     };
   }, []);
 
@@ -253,6 +289,30 @@ export default function App() {
   const isBusy = status === 'analyzing' || status === 'executing';
   const isAnimationActive = isBusy || voiceActive || isSpeaking;
 
+  const handlePause = useCallback(async (taskId: string) => {
+    await ipc()?.invoke('task:pause', taskId);
+  }, []);
+
+  const handleResume = useCallback(async (taskId: string) => {
+    await ipc()?.invoke('task:resume', taskId);
+    setHitlQuestion(null);
+  }, []);
+
+  const handleCancel = useCallback(async (taskId: string) => {
+    await ipc()?.invoke('task:cancel', taskId);
+    setHitlQuestion(null);
+  }, []);
+
+  const handleHitlAnswer = useCallback(async (answer: string) => {
+    if (!hitlQuestion) return;
+    await ipc()?.invoke('agent:human-response', {
+      id: hitlQuestion.id,
+      taskId: hitlQuestion.taskId,
+      answer,
+    });
+    setHitlQuestion(null);
+  }, [hitlQuestion]);
+
   const sendPrompt = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || inFlightRef.current) return;
@@ -262,7 +322,9 @@ export default function App() {
 
     const userMsgId  = `u-${Date.now()}`;
     const agentMsgId = `a-${Date.now()}`;
+    const currentTaskId = `task-${Date.now()}`;
 
+    setActiveTaskId(currentTaskId);
     setMessages(prev => [
       ...prev,
       { id: userMsgId, role: 'user', text: trimmed },
@@ -271,6 +333,8 @@ export default function App() {
     setPrompt('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setStatus('executing');
+    setExecutorState('observing');
+    setHitlQuestion(null);
     showBorderGlow(true, 'Thinking…');
 
     try {
@@ -279,6 +343,8 @@ export default function App() {
 
       const response = await renderer.invoke('agent:execute-prompt', {
         prompt: trimmed,
+        taskId: currentTaskId,
+        model: config.geminiModel,
       }) as ExecutionResponse;
 
       console.log('[App] agent:execute-prompt result:', response);
@@ -289,6 +355,7 @@ export default function App() {
           : m
       ));
       setStatus(response.success ? 'completed' : 'error');
+      setActiveTaskId(response.taskId || currentTaskId);
 
       // Speak the agent's final answer back via TTS with active glow animation
       if (response.success && response.message) {
@@ -377,8 +444,11 @@ export default function App() {
           </div>
         </header>
 
+        {/* ── Agent State Bar ── */}
+        {isBusy && <AgentStateBar state={executorState} />}
+
         {/* ── Chat Area ── */}
-        <main className="chat-area">
+        <main className="chat-area" style={{ position: 'relative' }}>
           {messages.length === 0 ? (
             <div className="empty-state">
               <div className="big-icon">
@@ -402,7 +472,47 @@ export default function App() {
             )
           )}
           <div ref={chatEndRef} />
+          <CommentaryBanner text={commentary} />
         </main>
+
+        {/* ── Task Controls ── */}
+        <TaskControls
+          status={executorState}
+          taskId={activeTaskId}
+          onPause={handlePause}
+          onResume={handleResume}
+          onCancel={handleCancel}
+        />
+
+        {/* ── Human-in-the-loop Question ── */}
+        {hitlQuestion && (
+          <div style={{
+            padding: 12,
+            borderTop: '1px solid var(--border)',
+            background: 'var(--surface)',
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>{hitlQuestion.question}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {hitlQuestion.options.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => handleHitlAnswer(opt)}
+                  style={{
+                    border: '1px solid var(--accent)',
+                    color: 'var(--accent)',
+                    background: 'transparent',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Input Bar ── */}
         <div className="input-bar">

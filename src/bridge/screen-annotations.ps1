@@ -51,10 +51,33 @@ param (
 
     # Auto-dismiss timeout in seconds (0 = wait for user click/ESC)
     [Parameter()]
-    [double]$DurationSeconds = 6.0
+    [double]$DurationSeconds = 6.0,
+
+    # Programmatically close any active annotation overlay and exit
+    [Parameter()]
+    [switch]$ClearOnly
 )
 
 $ErrorActionPreference = 'Stop'
+
+$annotationPidFile = Join-Path $env:TEMP "hey-jave-annotations.pid"
+
+if ($ClearOnly) {
+    if (Test-Path $annotationPidFile) {
+        try {
+            $pidToKill = [int](Get-Content $annotationPidFile -Raw)
+            if ($pidToKill -gt 0) {
+                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+        Remove-Item $annotationPidFile -Force -ErrorAction SilentlyContinue
+    }
+    Write-Output (@{ success = $true; message = "Annotations cleared" } | ConvertTo-Json -Compress)
+    return
+}
+
+# Register this overlay process so it can be programmatically closed.
+[System.IO.File]::WriteAllText($annotationPidFile, [string]$PID)
 
 # Parse JSON input if provided
 if (-not [string]::IsNullOrWhiteSpace($InputJson)) {
@@ -414,6 +437,9 @@ if ($DurationSeconds -gt 0) {
 
 # Display Modal Overlay
 $null = $window.ShowDialog()
+
+# Clean up the PID file after the overlay closes.
+Remove-Item $annotationPidFile -Force -ErrorAction SilentlyContinue
 
 # Output JSON status
 $resultObj = @{

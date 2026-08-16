@@ -119,11 +119,26 @@ class ElectronBridge:
             "keyboard_type": "KEYBOARD_TYPE",
             "keyboard_key": "KEYBOARD_KEY",
             "get_open_windows": "GET_WINDOWS",
+            "get_active_window": "GET_ACTIVE_WINDOW",
+            "restore_window": "RESTORE_WINDOW",
+            "resize_window": "RESIZE_WINDOW",
+            "read_clipboard": "READ_CLIPBOARD",
+            "write_clipboard": "WRITE_CLIPBOARD",
+            "execute_command": "EXECUTE_COMMAND",
+            "get_process_list": "GET_PROCESS_LIST",
+            "kill_process": "KILL_PROCESS",
             "take_screenshot": "TAKE_SCREENSHOT",
+            "screenshot_region": "SCREENSHOT_REGION",
+            "get_screen_resolution": "GET_SCREEN_RESOLUTION",
             "scroll": "SCROLL",
+            "drag_drop": "DRAG_DROP",
+            "uia_get_tree": "UIA_GET_TREE",
+            "uia_get_text": "UIA_GET_TEXT",
             "show_screenpad": "SHOW_SCRATCHPAD",
             "ask_human": "ASK_HUMAN",
             "highlight_box": "HIGHLIGHT_BOX",
+            "show_annotations": "SHOW_ANNOTATIONS",
+            "clear_annotations": "CLEAR_ANNOTATIONS",
         }
 
         # Handle wait_seconds natively
@@ -136,11 +151,9 @@ class ElectronBridge:
         params = dict(args)
 
         # Normalize parameter names if needed
-        if tool_name == "minimize_window" or tool_name == "focus_window":
+        if tool_name in ("minimize_window", "focus_window", "restore_window", "resize_window"):
             params["title"] = params.pop("windowTitle", "")
-        elif tool_name == "uia_click":
-            params["name"] = params.pop("elementName", "")
-        elif tool_name == "uia_type":
+        elif tool_name in ("uia_click", "uia_type", "uia_get_text"):
             params["name"] = params.pop("elementName", "")
 
         payload_json = json.dumps({"action": action, "params": params})
