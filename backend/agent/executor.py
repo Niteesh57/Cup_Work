@@ -39,19 +39,33 @@ class AgentState(str, Enum):
 EXECUTOR_SYSTEM_INSTRUCTION = """You are Hey Jave's Main Executor, a careful Windows desktop automation agent.
 
 Work through the user's goal using this loop:
-1. Observe the current screen/windows when needed.
-2. Analyze what you see.
-3. Plan the next concrete action.
-4. Perform a safety check before risky actions.
-5. Execute exactly one desktop tool call.
-6. Verify whether the goal is now achieved.
+1. Analyze what you know and the latest screen observation.
+2. Plan the next concrete action.
+3. Execute exactly one desktop tool call.
+4. Verify whether the goal is now achieved.
 
-Rules:
-- Prefer the least invasive action that achieves the goal.
-- Use spatial actions first, then UI Automation, then vision.
+Critical efficiency rules:
+- After every tool call, the system automatically captures and shows you a fresh screenshot. DO NOT call get_active_window, screenshot_region, or take_screenshot just to observe; use the observation already provided.
+- Call observation tools only when the automatic screenshot did not include the region you need.
+- Prefer UIA tools (uia_click, uia_type, uia_get_tree, uia_get_text) over pixel-based mouse/keyboard actions when an element has a stable name.
+- Use keyboard shortcuts (press_hotkey) like CTRL+L for the browser address bar instead of clicking by coordinates.
+- Be decisive. Do not repeat the same failed action; switch strategy immediately.
 - Never execute a shell command or kill a process without user confirmation.
-- When something is ambiguous, pause and ask the user a single question.
-- Provide a short final confirmation when the goal is complete."""
+- When the goal is done, stop calling tools and reply with a short confirmation."""
+
+# Read-only calls the model may use to observe state. They do not mutate the
+# desktop, so they should not exhaust the task's mutation action budget.
+OBSERVATION_TOOLS = {
+    "take_screenshot",
+    "screenshot_region",
+    "get_active_window",
+    "get_open_windows",
+    "get_screen_resolution",
+    "uia_get_tree",
+    "uia_get_text",
+    "read_clipboard",
+    "get_process_list",
+}
 
 
 class ExecutorTask:
@@ -142,7 +156,7 @@ class MainExecutorAgent:
     def __init__(
         self,
         model: Optional[str] = None,
-        max_actions: int = 15,
+        max_actions: int = 30,
         max_llm_calls: int = 60,
     ) -> None:
         self._model_name = model or config.DEFAULT_MODEL
@@ -250,9 +264,11 @@ class MainExecutorAgent:
                 response_parts: List[types.Part] = []
                 observation_parts: List[types.Part] = []
                 for fc in function_calls:
-                    if actions >= self._max_actions:
-                        break
                     if control.cancel_requested.is_set():
+                        break
+
+                    is_observation = fc.name in OBSERVATION_TOOLS
+                    if not is_observation and actions >= self._max_actions:
                         break
 
                     if not await self._safety_gate(fc.name, dict(fc.args) if fc.args else {}, task_id, user_id):
@@ -260,7 +276,8 @@ class MainExecutorAgent:
                         response_parts.append(types.Part.from_function_response(name=fc.name, response=resp))
                         continue
 
-                    actions += 1
+                    if not is_observation:
+                        actions += 1
                     step = await self._execute_tool_call(fc, task_id)
                     steps.append(step)
 
@@ -269,8 +286,13 @@ class MainExecutorAgent:
                         response={"result": step.get("result")},
                     ))
 
-                    # Re-observe after every action: capture the screen and feed
-                    # it back to the model so the next planning turn sees reality.
+                    # Re-observe only after a mutation action. Read-only
+                    # observation calls already return the information the
+                    # model asked for, so injecting another screenshot here
+                    # would just bloat context and slow down every turn.
+                    if is_observation:
+                        continue
+
                     await self._set_state(task_id, AgentState.VERIFYING)
                     await event_bus.publish(EventType.OBSERVING_SCREEN, {"taskId": task_id})
                     screenshot_b64 = await self._screenshot_for_action(task_id, fc.name, dict(fc.args) if fc.args else {})

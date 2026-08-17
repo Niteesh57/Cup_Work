@@ -17,3 +17,8 @@
 - Prefers registering every new tool/capability across all dispatch paths (model declaration, TS dispatcher, and Python direct-fallback map) so no fallback path silently fails. Confidence: 0.7
 - Prefers keeping verification screenshots cheap — region-crop or downscale instead of sending full-screen PNG base64 per verification. Confidence: 0.7
 - Prefers graceful fallback routing when swapping a subsystem — try the new path, fall back to the proven path on exception — over a hard cutover. Confidence: 0.6
+- Prefers a dual-channel backend interface: REST endpoints for request/response commands and a single WebSocket for streaming/bidirectional events (tool execution, state changes, HITL, TTS). Confidence: 0.75
+- Prefers typed, discriminated event messages — every WebSocket message carries a `type` field with a documented JSON payload schema rather than ad-hoc payloads. Confidence: 0.7
+- Prefers a separate action budget for state-mutating tool calls; read-only observation calls (screenshots, window queries, UIA tree/text reads) do not count against the mutation budget. Confidence: 0.7
+- Prefers re-observing (injecting a fresh screenshot) only after state-mutating actions, not after read-only observation calls, to avoid context bloat and slow turns. Confidence: 0.7
+- Prefers system instructions that explicitly tell the model the system already supplies fresh screenshots after each action, so the model does not redundantly call observation tools and flail. Confidence: 0.65
