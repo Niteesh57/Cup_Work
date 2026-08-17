@@ -110,6 +110,7 @@ export default function App() {
   const engineRef = useRef<VoiceEngine | null>(null);
   const activatedRef = useRef(false);
   const sendPromptRef = useRef<(text: string) => void>(() => {});
+  const pendingHitlRef = useRef<HitlQuestion | null>(null);
 
   const showBorderGlow = useCallback((show: boolean, message?: string) => {
     if (show) {
@@ -153,6 +154,20 @@ export default function App() {
         activatedRef.current = true;
         setVoiceActive(true);
         engine.activate();
+
+        // If the agent is waiting for an answer, resolve the pending HITL
+        // question with this transcript instead of starting a new task.
+        if (pendingHitlRef.current) {
+          console.log('[Voice] Resolving HITL question with answer:', command);
+          await ipc()?.invoke('agent:human-response', {
+            id: pendingHitlRef.current.id,
+            taskId: pendingHitlRef.current.taskId,
+            answer: command,
+          });
+          setHitlQuestion(null);
+          pendingHitlRef.current = null;
+          return;
+        }
 
         if (command) {
           console.log('[Voice] Sending command to agent:', command);
@@ -242,7 +257,9 @@ export default function App() {
     };
 
     const onHitlQuestion = (_: unknown, data: unknown) => {
-      setHitlQuestion(data as HitlQuestion);
+      const q = data as HitlQuestion;
+      setHitlQuestion(q);
+      pendingHitlRef.current = q;
     };
 
     const onCommentary = (_: unknown, data: unknown) => {
@@ -311,6 +328,7 @@ export default function App() {
       answer,
     });
     setHitlQuestion(null);
+    pendingHitlRef.current = null;
   }, [hitlQuestion]);
 
   const sendPrompt = useCallback(async (text: string) => {
@@ -492,7 +510,7 @@ export default function App() {
             background: 'var(--surface)',
           }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>{hitlQuestion.question}</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               {hitlQuestion.options.map((opt) => (
                 <button
                   key={opt}
@@ -511,6 +529,42 @@ export default function App() {
                 </button>
               ))}
             </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleHitlAnswer((e.target as HTMLFormElement).hitlFreeText.value);
+                (e.target as HTMLFormElement).reset();
+              }}
+              style={{ display: 'flex', gap: 8 }}
+            >
+              <input
+                name="hitlFreeText"
+                placeholder="Or type your answer…"
+                style={{
+                  flex: 1,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text-primary)',
+                  borderRadius: 6,
+                  padding: '4px 10px',
+                  fontSize: 12,
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  border: '1px solid var(--accent)',
+                  color: 'var(--accent)',
+                  background: 'transparent',
+                  borderRadius: 6,
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                Send
+              </button>
+            </form>
           </div>
         )}
 

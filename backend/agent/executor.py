@@ -40,12 +40,21 @@ EXECUTOR_SYSTEM_INSTRUCTION = """You are Hey Jave's Main Executor, a careful Win
 
 Work through the user's goal using this loop:
 1. Analyze what you know and the latest screen observation.
-2. Plan the next concrete action.
+2. Announce your plan in one short spoken sentence.
 3. Execute exactly one desktop tool call.
 4. Verify whether the goal is now achieved.
 
+Observation & HITL rules:
+- At the start of a task the system gives you a screenshot and the list of open windows. Use them to decide your first action.
+- Before your first action, speak one short sentence announcing it (for example: "I'll start by opening Chrome."). This is read aloud to the user.
+- If a suitable browser or application is already open or visible in the taskbar, do NOT launch a new one. Mention what you see and ask the user once with ask_human whether you may use it.
+- Use ask_human for security-sensitive choices, preferences, browser/profile selection, or any genuinely ambiguous next step. Ask one question at a time.
+- If the user gives a free-form answer, incorporate it into the rest of the task and continue from the current context. Do not restart.
+- When the user refuses or corrects you, adjust your plan and keep going.
+- After you open an application or reach a point where the user must pick (for example a browser profile), ask the user which option to take and wait for their answer before continuing.
+
 Critical efficiency rules:
-- After every tool call, the system automatically captures and shows you a fresh screenshot. DO NOT call get_active_window, screenshot_region, or take_screenshot just to observe; use the observation already provided.
+- After every mutation tool call, the system automatically captures and shows you a fresh screenshot. DO NOT call get_active_window, screenshot_region, or take_screenshot just to observe; use the observation already provided.
 - Call observation tools only when the automatic screenshot did not include the region you need.
 - Prefer UIA tools (uia_click, uia_type, uia_get_tree, uia_get_text) over pixel-based mouse/keyboard actions when an element has a stable name.
 - Use keyboard shortcuts (press_hotkey) like CTRL+L for the browser address bar instead of clicking by coordinates.
@@ -185,9 +194,48 @@ class MainExecutorAgent:
         await electron_bridge.broadcast({"type": "TASK_START", "taskId": task_id, "prompt": prompt})
 
         try:
-            contents: List[types.Content] = [
-                types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
-            ]
+            # ── Initial observation: screenshot + open windows up front ──────
+            # Decide what exists before deciding what to do, and tell the user
+            # what we found / what we plan in a spoken commentary line.
+            await self._set_state(task_id, AgentState.OBSERVING)
+            await event_bus.publish(EventType.OBSERVING_SCREEN, {"taskId": task_id})
+            initial_screenshot = await self._screenshot(task_id)
+            initial_windows: List[str] = []
+            try:
+                win_res = await electron_bridge.execute_tool("get_open_windows", {}, task_id=task_id)
+                initial_windows = [
+                    str(w.get("title", "")).strip()
+                    for w in (win_res.get("windows") if isinstance(win_res, dict) else [])
+                    if str(w.get("title", "")).strip()
+                ]
+            except Exception:
+                pass
+            await event_bus.publish(EventType.TTS_SPEAK, {
+                "text": "Let me take a look at your screen first.",
+            })
+
+            contents: List[types.Content] = []
+            obs_parts: List[types.Part] = []
+            if initial_windows:
+                obs_parts.append(types.Part.from_text(text=(
+                    "Open windows right now:\n" + "\n".join(f"- {t}" for t in initial_windows[:15])
+                )))
+            if initial_screenshot:
+                try:
+                    obs_parts.append(types.Part.from_bytes(
+                        data=base64.b64decode(initial_screenshot),
+                        mime_type="image/png",
+                    ))
+                except Exception:
+                    pass
+            obs_parts.append(types.Part.from_text(text=(
+                f"Task: {prompt}\n\n"
+                "Start by stating in ONE short sentence what you will do first, "
+                "then take the first step. If a suitable browser or application "
+                "is already open, reuse it instead of launching a new one."
+            )))
+            contents.append(types.Content(role="user", parts=obs_parts))
+
             memory_manager.add_turn(user_id, "USER", prompt)
             memory_context = memory_manager.format_context_prompt(user_id)
             system_instruction = EXECUTOR_SYSTEM_INSTRUCTION
@@ -233,6 +281,13 @@ class MainExecutorAgent:
                     p.function_call for p in candidate.content.parts if p.function_call is not None
                 ]
 
+                # Speak the model's narrative line (e.g. "I'll start by opening
+                # Chrome") when it accompanies an action, so the user hears the
+                # plan before it executes.
+                narrative = "\n".join(p.text for p in candidate.content.parts if p.text).strip()
+                if narrative and function_calls:
+                    await event_bus.publish(EventType.TTS_SPEAK, {"text": narrative})
+
                 if not function_calls:
                     # No tool call: verify actual screen state before declaring success.
                     await self._set_state(task_id, AgentState.VERIFYING)
@@ -270,6 +325,24 @@ class MainExecutorAgent:
                     is_observation = fc.name in OBSERVATION_TOOLS
                     if not is_observation and actions >= self._max_actions:
                         break
+
+                    # Human-in-the-loop: use the non-blocking coordinator so the
+                    # question can be answered by ScreenPad buttons OR voice.
+                    # The executor suspends here and resumes with the answer.
+                    if fc.name == "ask_human":
+                        args = dict(fc.args) if fc.args else {}
+                        question = str(args.get("question", "Can I continue?"))
+                        options = list(args.get("options") or [])
+                        await self._set_state(task_id, AgentState.WAITING_HITL)
+                        answer = await hitl_manager.ask(
+                            question=question,
+                            options=options,
+                            task_id=task_id,
+                            user_id=user_id,
+                        )
+                        result = {"success": bool(answer), "answer": answer or "", "question": question}
+                        response_parts.append(types.Part.from_function_response(name=fc.name, response={"result": result}))
+                        continue
 
                     if not await self._safety_gate(fc.name, dict(fc.args) if fc.args else {}, task_id, user_id):
                         resp = {"result": {"success": False, "message": "Action denied by user"}}

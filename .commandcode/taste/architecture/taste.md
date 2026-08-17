@@ -22,3 +22,8 @@
 - Prefers a separate action budget for state-mutating tool calls; read-only observation calls (screenshots, window queries, UIA tree/text reads) do not count against the mutation budget. Confidence: 0.7
 - Prefers re-observing (injecting a fresh screenshot) only after state-mutating actions, not after read-only observation calls, to avoid context bloat and slow turns. Confidence: 0.7
 - Prefers system instructions that explicitly tell the model the system already supplies fresh screenshots after each action, so the model does not redundantly call observation tools and flail. Confidence: 0.65
+- Prefers using human-in-the-loop for preference, browser/profile selection, and genuinely ambiguous choices — not just destructive/risky actions. Confidence: 0.9
+- Prefers checking the current screen for already-open browsers/apps before launching a new instance, and asking the user for permission before reusing an existing window. Confidence: 0.8
+- Prefers continuing an in-progress task from current context after a HITL answer — incorporate the answer and resume — rather than restarting from scratch. Confidence: 0.8
+- Prefers verifying the correct search/input field is targeted before typing (e.g., browser address bar vs the Windows taskbar search box) so input lands in the intended control. Confidence: 0.75
+- Prefers an explicit observe-first step at the start of every task: capture a screenshot plus the open-windows list, then decide the first action from real screen state rather than acting blind. Confidence: 0.85
