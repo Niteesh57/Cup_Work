@@ -18,7 +18,12 @@ research_agent = LlmAgent(
         "You are the Research Agent. Use google_search to find current and "
         "authoritative information. Gather multiple sources when the topic is "
         "complex, compare them, and synthesize a clear answer. Cite the sources "
-        "you used. If a claim is uncertain, say so."
+        "you used. If a claim is uncertain, say so. Return your final summary "
+        "to the root agent."
     ),
     tools=[GoogleSearchTool()],
+    # Leaf specialist: never transfer onward, so the model only sees the search
+    # tool (Vertex AI rejects mixing search + function tools in one request).
+    disallow_transfer_to_parent=True,
+    disallow_transfer_to_peers=True,
 )

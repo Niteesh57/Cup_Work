@@ -2,14 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentStatus, AgentStep, AppConfig, ExecutionResponse, ExecutorState, HitlQuestion } from '../shared/types';
 import { VoiceEngine } from './voiceEngine';
 import {
-  Bot, Send, Settings, Sun, Moon, CheckCircle2,
-  XCircle, Loader2, Zap, Monitor, Type, Keyboard
+  Bot, CheckCircle2, XCircle, Loader2, Zap, Monitor, Type, Keyboard, Mic, X,
+  Pause, Play, Square
 } from 'lucide-react';
-import { SettingsModal } from './components/SettingsModal';
-import { TaskControls } from './components/TaskControls';
-import { AgentStateBar } from './components/AgentStateBar';
 import { CommentaryBanner } from './components/CommentaryBanner';
-import appIconUrl from './assets/icon.png';
 
 /* ── Safe IPC accessor (lazy — avoids module-level crash) ────── */
 function ipc() {
@@ -56,16 +52,17 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'agent';
   text?: string;
+  isVoice?: boolean;
   steps?: AgentStep[];
   status?: 'thinking' | 'done' | 'error';
 }
 
-const QUICK_ACTIONS = [
-  'Minimize all open windows',
-  'Open Notepad',
-  'Take a screenshot',
-  'Show me what windows are open',
-];
+interface ExecuteOptions {
+  prompt?: string;
+  audioBase64?: string;
+  mimeType?: string;
+  isVoice?: boolean;
+}
 
 const ACTION_ICONS: Record<string, React.ReactNode> = {
   minimize_all_windows: <Monitor size={13} />,
@@ -85,16 +82,10 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
 
 /* ── App ────────────────────────────────────────────────────── */
 export default function App() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    try { return (localStorage.getItem('hj-theme') as 'dark' | 'light') || 'dark'; }
-    catch { return 'dark'; }
-  });
   const [status, setStatus] = useState<AgentStatus>('idle');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [prompt, setPrompt] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [executorState, setExecutorState] = useState<ExecutorState>('observing');
+  const [executorState, setExecutorState] = useState<ExecutorState | 'idle'>('idle');
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [hitlQuestion, setHitlQuestion] = useState<HitlQuestion | null>(null);
   const [commentary, setCommentary] = useState('');
@@ -102,21 +93,21 @@ export default function App() {
     geminiModel: 'gemini-2.5-flash',
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  /* ── Voice: native mic + VAD state machine ─────────────────────── */
-  const [voiceActive, setVoiceActive] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<string>('');
+  /* ── Voice: ambient auto-listening (active by default) ── */
+  const [recording, setRecording] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<string>('Listening for voice…');
   const engineRef = useRef<VoiceEngine | null>(null);
-  const activatedRef = useRef(false);
-  const sendPromptRef = useRef<(text: string) => void>(() => {});
   const pendingHitlRef = useRef<HitlQuestion | null>(null);
+  const lastUtteranceRef = useRef<{ wavBase64: string; mimeType: string } | null>(null);
+  const voiceActiveRef = useRef(true);
+  const sendPromptRef = useRef<(input: string | ExecuteOptions) => Promise<void>>();
 
-  const showBorderGlow = useCallback((show: boolean, message?: string) => {
+  const showBorderGlow = useCallback((show: boolean, message?: string, mode?: 'user-speaking' | 'thinking' | 'executing' | 'speaking') => {
     if (show) {
-      ipc()?.invoke('agent:listen-start');
+      ipc()?.invoke('agent:glow-show', { text: message, mode: mode || 'thinking' });
     } else {
-      ipc()?.invoke('agent:listen-stop');
+      ipc()?.invoke('agent:glow-hide');
     }
     if (message !== undefined) setVoiceStatus(message);
   }, []);
@@ -125,99 +116,124 @@ export default function App() {
     const engine = new VoiceEngine({
       onUtterance: async (utterance) => {
         console.log('[Voice] Utterance captured:', utterance.durationMs, 'ms');
-        showBorderGlow(true, 'Analyzing audio…');
+        lastUtteranceRef.current = { wavBase64: utterance.wavBase64, mimeType: utterance.mimeType };
 
-        // Transcribe via Gemini in the main process.
-        const res = await ipc()?.invoke('voice:transcribe', {
-          audioBase64: utterance.wavBase64,
-          mimeType: utterance.mimeType,
-        }) as { success: boolean; text?: string; error?: string } | undefined;
-
-        if (!res?.success || !res.text) {
-          const errorMsg = res?.error || 'Unknown transcription error';
-          console.error('[Voice] Transcription failed:', errorMsg);
-          setVoiceStatus(`Error: ${errorMsg}`);
-          showBorderGlow(false, '');
-          return;
-        }
-
-        const transcript = res.text.trim().replace(/^["']|["']$/g, '').trim();
-        console.log('[Voice] Transcript:', transcript);
-
-        // Extract command if it starts with "hey [name]", or use whole transcript
-        const match = transcript.match(/^(?:\s*hey(?:\s+(?:jave|java|jawa|javi|jarvis|javee|agent|buddy|there))?\b[,\s!?.:]*)/i);
-        let command = transcript;
-        if (match) {
-          command = transcript.slice(match[0].length).trim();
-        }
-
-        activatedRef.current = true;
-        setVoiceActive(true);
-        engine.activate();
-
-        // If the agent is waiting for an answer, resolve the pending HITL
-        // question with this transcript instead of starting a new task.
+        // If the agent is waiting for a HITL response, transcribe for fast answer resolution
         if (pendingHitlRef.current) {
-          console.log('[Voice] Resolving HITL question with answer:', command);
-          await ipc()?.invoke('agent:human-response', {
-            id: pendingHitlRef.current.id,
-            taskId: pendingHitlRef.current.taskId,
-            answer: command,
-          });
-          setHitlQuestion(null);
-          pendingHitlRef.current = null;
-          return;
+          showBorderGlow(true, 'Analyzing answer…', 'thinking');
+          const res = await ipc()?.invoke('voice:transcribe', {
+            audioBase64: utterance.wavBase64,
+            mimeType: utterance.mimeType,
+          }) as { success: boolean; text?: string; error?: string } | undefined;
+
+          if (res?.success && res.text) {
+            const transcript = res.text.trim().replace(/^["']|["']$/g, '').trim();
+            console.log('[Voice] Resolving HITL question with answer:', transcript);
+            await ipc()?.invoke('agent:human-response', {
+              id: pendingHitlRef.current.id,
+              taskId: pendingHitlRef.current.taskId,
+              answer: transcript,
+            });
+            setHitlQuestion(null);
+            pendingHitlRef.current = null;
+            setVoiceStatus('Listening for voice…');
+            showBorderGlow(false, '');
+            return;
+          }
         }
 
-        if (command) {
-          console.log('[Voice] Sending command to agent:', command);
-          void sendPromptRef.current(command);
-        } else {
-          showBorderGlow(true, 'Listening…');
-          setIsSpeaking(true);
-          await speak("I'm listening, tell me what you need.");
-          setIsSpeaking(false);
-          showBorderGlow(true, 'Listening…');
+        // Automatic voice detection -> Send directly to agents!
+        setVoiceStatus('Sending to agent…');
+        showBorderGlow(true, '⚡ Thinking & Planning…', 'thinking');
+        if (sendPromptRef.current) {
+          await sendPromptRef.current({
+            audioBase64: utterance.wavBase64,
+            mimeType: utterance.mimeType,
+            isVoice: true,
+          });
         }
       },
       onStateChange: (state) => {
         console.log('[Voice] State:', state);
         if (state === 'SPEAKING') {
-          showBorderGlow(true, 'User speaking…');
+          setVoiceStatus('Hearing speech…');
+          showBorderGlow(true, '🎙️ Hearing your voice…', 'user-speaking');
         } else if (state === 'COUNTDOWN') {
-          showBorderGlow(true, 'Listening…');
+          setVoiceStatus('Processing voice…');
+          showBorderGlow(true, '⚡ Processing voice…', 'thinking');
+        } else if (state === 'LISTENING') {
+          setVoiceStatus('Listening for voice…');
+          showBorderGlow(false, '');
         }
       },
       onCountdown: (seconds) => {
         setVoiceStatus(`Wait ${seconds}…`);
       },
       onIdleTimeout: () => {
-        console.log('[Voice] Idle timeout (30s) — deactivating');
-        activatedRef.current = false;
-        setVoiceActive(false);
-        showBorderGlow(false, '');
-        setStatus('idle');
+        console.log('[Voice] Idle timeout');
       },
     });
 
     engineRef.current = engine;
-    engine.start()
-      .then(() => console.log('[Voice] Native voice engine started (background listening)'))
-      .catch((err) => console.error('[Voice] Failed to start mic:', err));
+
+    // Auto-activate mic on mount
+    let unmounted = false;
+    (async () => {
+      try {
+        await engine.start();
+        if (!unmounted && voiceActiveRef.current) {
+          engine.activate();
+          setRecording(true);
+          setVoiceStatus('Listening for voice…');
+          showBorderGlow(false, '');
+        }
+      } catch (err) {
+        console.warn('[App] Auto-mic start error:', err);
+        if (!unmounted) {
+          setRecording(false);
+          voiceActiveRef.current = false;
+          setVoiceStatus('Tap mic to activate');
+        }
+      }
+    })();
 
     return () => {
+      unmounted = true;
       engine.stop().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showBorderGlow]);
 
-  /* Toggle theme */
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('hj-theme', next); } catch {}
-  };
+  /* Start / Resume listening */
+  const startRecording = useCallback(async () => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    try {
+      voiceActiveRef.current = true;
+      await engine.start();
+      engine.activate();
+      setRecording(true);
+      lastUtteranceRef.current = null;
+      setVoiceStatus('Listening for voice…');
+      showBorderGlow(false, '');
+    } catch (err) {
+      console.error('[App] Mic start failed:', err);
+      setVoiceStatus('Mic unavailable');
+      setRecording(false);
+      voiceActiveRef.current = false;
+    }
+  }, [showBorderGlow]);
+
+  /* Pause / Mute voice listening */
+  const cancelRecording = useCallback(() => {
+    voiceActiveRef.current = false;
+    const engine = engineRef.current;
+    engine?.deactivate();
+    setRecording(false);
+    setVoiceStatus('Mic muted — tap to activate');
+    lastUtteranceRef.current = null;
+    showBorderGlow(false, '');
+  }, [showBorderGlow]);
 
   /* Load config and setup listeners on mount */
   useEffect(() => {
@@ -238,6 +254,9 @@ export default function App() {
           ? { ...m, steps: [...(m.steps || []), step] }
           : m
       ));
+      if (step.thought || step.actionName) {
+        showBorderGlow(true, `🛠️ ${step.thought || `Executing ${step.actionName}`}`, 'executing');
+      }
     };
 
     const onBackendStatus = (_: unknown, data: unknown) => {
@@ -295,30 +314,28 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  /* Auto-resize textarea */
-  const resizeTextarea = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  };
-
   const isBusy = status === 'analyzing' || status === 'executing';
-  const isAnimationActive = isBusy || voiceActive || isSpeaking;
+  const isTaskRunning = isBusy || isSpeaking || (executorState !== 'idle');
+  const isAnimationActive = isBusy || isSpeaking;
 
   const handlePause = useCallback(async (taskId: string) => {
     await ipc()?.invoke('task:pause', taskId);
+    setExecutorState('paused');
   }, []);
 
   const handleResume = useCallback(async (taskId: string) => {
     await ipc()?.invoke('task:resume', taskId);
     setHitlQuestion(null);
+    setExecutorState('acting');
   }, []);
 
   const handleCancel = useCallback(async (taskId: string) => {
     await ipc()?.invoke('task:cancel', taskId);
     setHitlQuestion(null);
-  }, []);
+    setExecutorState('idle');
+    setStatus('idle');
+    showBorderGlow(false, '');
+  }, [showBorderGlow]);
 
   const handleHitlAnswer = useCallback(async (answer: string) => {
     if (!hitlQuestion) return;
@@ -331,12 +348,17 @@ export default function App() {
     pendingHitlRef.current = null;
   }, [hitlQuestion]);
 
-  const sendPrompt = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || inFlightRef.current) return;
+  const sendPrompt = useCallback(async (input: string | ExecuteOptions) => {
+    const opts: ExecuteOptions = typeof input === 'string' ? { prompt: input } : input;
+    const trimmed = opts.prompt?.trim() || '';
+    if (!trimmed && !opts.audioBase64) return;
+    if (inFlightRef.current) return;
     inFlightRef.current = true;
 
-    console.log('[App] sendPrompt started:', trimmed);
+    // Temporarily pause voice engine during execution/TTS
+    engineRef.current?.deactivate();
+
+    console.log('[App] sendPrompt started:', opts.isVoice ? '[Spoken Audio]' : trimmed);
 
     const userMsgId  = `u-${Date.now()}`;
     const agentMsgId = `a-${Date.now()}`;
@@ -345,22 +367,37 @@ export default function App() {
     setActiveTaskId(currentTaskId);
     setMessages(prev => [
       ...prev,
-      { id: userMsgId, role: 'user', text: trimmed },
+      { id: userMsgId, role: 'user', text: trimmed, isVoice: opts.isVoice },
       { id: agentMsgId, role: 'agent', status: 'thinking', steps: [] },
     ]);
-    setPrompt('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setStatus('executing');
     setExecutorState('observing');
     setHitlQuestion(null);
-    showBorderGlow(true, 'Thinking…');
+    lastUtteranceRef.current = null;
+    showBorderGlow(true, '⚡ Thinking & Planning…', 'thinking');
+
+    // If audio is provided, optionally transcribe in parallel for user message text display
+    if (opts.isVoice && opts.audioBase64 && !trimmed) {
+      ipc()?.invoke('voice:transcribe', {
+        audioBase64: opts.audioBase64,
+        mimeType: opts.mimeType,
+      }).then((res) => {
+        const trans = res as { success: boolean; text?: string } | undefined;
+        if (trans?.success && trans.text) {
+          const cleanText = trans.text.trim().replace(/^["']|["']$/g, '').trim();
+          setMessages(prev => prev.map(m => m.id === userMsgId ? { ...m, text: cleanText } : m));
+        }
+      }).catch(() => {});
+    }
 
     try {
       const renderer = ipc();
       if (!renderer) throw new Error('IPC not available');
 
       const response = await renderer.invoke('agent:execute-prompt', {
-        prompt: trimmed,
+        prompt: trimmed || undefined,
+        audioBase64: opts.audioBase64,
+        mimeType: opts.mimeType,
         taskId: currentTaskId,
         model: config.geminiModel,
       }) as ExecutionResponse;
@@ -378,7 +415,7 @@ export default function App() {
       // Speak the agent's final answer back via TTS with active glow animation
       if (response.success && response.message) {
         setIsSpeaking(true);
-        showBorderGlow(true, 'Agent speaking…');
+        showBorderGlow(true, '🔊 Hey Jave is speaking…', 'speaking');
         await speak(response.message);
         setIsSpeaking(false);
       }
@@ -394,29 +431,21 @@ export default function App() {
     } finally {
       inFlightRef.current = false;
       setStatus('idle');
-      if (!voiceActive) {
+      setExecutorState('idle');
+      // Automatically resume voice listening if voice is enabled
+      if (voiceActiveRef.current && engineRef.current) {
+        engineRef.current.activate();
+        setRecording(true);
+        setVoiceStatus('Listening for voice…');
+        showBorderGlow(false, '');
+      } else {
+        setRecording(false);
         showBorderGlow(false, '');
       }
     }
-  }, [showBorderGlow, voiceActive]);
+  }, [config.geminiModel, showBorderGlow]);
 
-  // Keep the voice engine's reference to the latest sendPrompt.
   sendPromptRef.current = sendPrompt;
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendPrompt(prompt);
-    }
-  };
-
-  const handleSaveConfig = async (partial: Partial<AppConfig>) => {
-    const updated = { ...config, ...partial };
-    setConfig(updated);
-    try {
-      await ipc()?.invoke('config:save', partial);
-    } catch (e) { console.error(e); }
-  };
 
   /* Status label */
   const statusLabel = () => {
@@ -439,7 +468,9 @@ export default function App() {
         {/* ── Top Bar ── */}
         <header className="topbar">
           <div className="topbar-left">
-            <img src={appIconUrl} alt="Hey Jave" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }} />
+            <div className="logo-icon">
+              <Bot size={18} />
+            </div>
             <span className="logo-name">Hey Jave</span>
           </div>
 
@@ -453,17 +484,38 @@ export default function App() {
           </div>
 
           <div className="topbar-right">
-            <button className="icon-btn" onClick={toggleTheme} title="Toggle dark / light mode">
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-            <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">
-              <Settings size={16} />
-            </button>
+            {recording && (
+              <button className="icon-btn" onClick={cancelRecording} title="Mute microphone">
+                <Mic size={16} color="#34a853" />
+              </button>
+            )}
           </div>
         </header>
 
         {/* ── Agent State Bar ── */}
-        {isBusy && <AgentStateBar state={executorState} />}
+        {isBusy && (
+          <div className="agent-state-bar">
+            {[
+              { key: 'observing', label: 'OBSERVING' },
+              { key: 'planning', label: 'PLANNING' },
+              { key: 'acting', label: 'ACTING' },
+              { key: 'verifying', label: 'VERIFYING' },
+            ].map((step, i) => {
+              const activeIndex = ['observing', 'planning', 'acting', 'verifying'].findIndex(s => s === executorState);
+              const isActive = i === activeIndex;
+              const isDone = i < activeIndex;
+              return (
+                <React.Fragment key={step.key}>
+                  <span className={`agent-state-step${isActive ? ' active' : ''}${isDone ? ' done' : ''}`}>
+                    <span className="step-dot" />
+                    {step.label}
+                  </span>
+                  {i < 3 && <span className="agent-state-arrow">→</span>}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── Chat Area ── */}
         <main className="chat-area" style={{ position: 'relative' }}>
@@ -473,19 +525,12 @@ export default function App() {
                 <Bot size={22} color="var(--accent)" />
               </div>
               <h3>How can I help you today?</h3>
-              <p>Tell me what to do on your Windows PC.</p>
-              <div className="quick-chips">
-                {QUICK_ACTIONS.map(action => (
-                  <button key={action} className="quick-chip" onClick={() => sendPrompt(action)}>
-                    {action}
-                  </button>
-                ))}
-              </div>
+              <p>Voice detection is active — speak naturally to control your Windows PC.</p>
             </div>
           ) : (
             messages.map(msg =>
               msg.role === 'user'
-                ? <UserMessage key={msg.id} text={msg.text || ''} />
+                ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} />
                 : <AgentMessage key={msg.id} msg={msg} />
             )
           )}
@@ -493,37 +538,16 @@ export default function App() {
           <CommentaryBanner text={commentary} />
         </main>
 
-        {/* ── Task Controls ── */}
-        <TaskControls
-          status={executorState}
-          taskId={activeTaskId}
-          onPause={handlePause}
-          onResume={handleResume}
-          onCancel={handleCancel}
-        />
-
         {/* ── Human-in-the-loop Question ── */}
         {hitlQuestion && (
-          <div style={{
-            padding: 12,
-            borderTop: '1px solid var(--border)',
-            background: 'var(--surface)',
-          }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>{hitlQuestion.question}</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <div className="hitl-panel">
+            <div className="hitl-question">{hitlQuestion.question}</div>
+            <div className="hitl-options">
               {hitlQuestion.options.map((opt) => (
                 <button
                   key={opt}
                   onClick={() => handleHitlAnswer(opt)}
-                  style={{
-                    border: '1px solid var(--accent)',
-                    color: 'var(--accent)',
-                    background: 'transparent',
-                    borderRadius: 6,
-                    padding: '4px 12px',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
+                  className="hitl-option"
                 >
                   {opt}
                 </button>
@@ -535,88 +559,109 @@ export default function App() {
                 handleHitlAnswer((e.target as HTMLFormElement).hitlFreeText.value);
                 (e.target as HTMLFormElement).reset();
               }}
-              style={{ display: 'flex', gap: 8 }}
+              className="hitl-freeform"
             >
               <input
                 name="hitlFreeText"
                 placeholder="Or type your answer…"
-                style={{
-                  flex: 1,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text-primary)',
-                  borderRadius: 6,
-                  padding: '4px 10px',
-                  fontSize: 12,
-                }}
+                className="hitl-input"
               />
-              <button
-                type="submit"
-                style={{
-                  border: '1px solid var(--accent)',
-                  color: 'var(--accent)',
-                  background: 'transparent',
-                  borderRadius: 6,
-                  padding: '4px 12px',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                Send
-              </button>
+              <button type="submit" className="hitl-send">Send</button>
             </form>
           </div>
         )}
 
-        {/* ── Input Bar ── */}
-        <div className="input-bar">
-          <div className="input-wrap">
-            <textarea
-              ref={textareaRef}
-              className="prompt-input"
-              placeholder="Ask Hey Jave to do something on your PC…"
-              rows={1}
-              value={prompt}
-              onChange={(e) => { setPrompt(e.target.value); resizeTextarea(); }}
-              onKeyDown={handleKeyDown}
-              disabled={isBusy}
-            />
-            <button
-              className="send-btn"
-              onClick={() => sendPrompt(prompt)}
-              disabled={isBusy || !prompt.trim()}
-              title="Send (Enter)"
-            >
-              {isBusy
-                ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                : <Send size={15} />
-              }
-            </button>
-          </div>
-          <p className="input-hint">Press Enter to send · Shift+Enter for new line</p>
+        {/* ── Bottom Dock Bar (Voice & Task Execution Controls) ── */}
+        <div className="voice-bar">
+          {isTaskRunning ? (
+            <div className="task-controls-dock">
+              <div className="task-status-pill">
+                <span className={`step-dot active${executorState === 'paused' ? ' paused' : ''}`} />
+                <span>{executorState === 'paused' ? 'Task paused' : (statusLabel() || 'Agent executing…')}</span>
+              </div>
+              {executorState === 'paused' ? (
+                <button
+                  className="task-action-btn resume"
+                  onClick={() => handleResume(activeTaskId)}
+                  title="Resume task execution"
+                >
+                  <Play size={14} /> Resume
+                </button>
+              ) : (
+                <button
+                  className="task-action-btn pause"
+                  onClick={() => handlePause(activeTaskId)}
+                  title="Pause task execution"
+                >
+                  <Pause size={14} /> Pause
+                </button>
+              )}
+              <button
+                className="task-action-btn cancel"
+                onClick={() => handleCancel(activeTaskId)}
+                title="Stop / Cancel task"
+              >
+                <Square size={13} /> Stop
+              </button>
+            </div>
+          ) : recording ? (
+            <>
+              <button className="voice-btn cancel" onClick={cancelRecording} title="Mute microphone" aria-label="Mute microphone">
+                <X size={18} />
+              </button>
+              <div className="recording-pill">
+                <span className="rec-dot" aria-hidden="true" />
+                {voiceStatus || 'Listening for voice…'}
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                className="mic-btn"
+                onClick={startRecording}
+                title="Tap to activate voice detection"
+                aria-label="Start voice listening"
+              >
+                <Mic size={28} />
+              </button>
+              <p className="voice-hint">{voiceStatus || 'Mic paused — tap to activate'}</p>
+            </>
+          )}
         </div>
       </div>
-
-      {/* ── Settings Modal ── */}
-      {showSettings && (
-        <SettingsModal
-          config={config}
-          onClose={() => setShowSettings(false)}
-          onSave={handleSaveConfig}
-        />
-      )}
     </>
   );
 }
 
 /* ── Sub-components ─────────────────────────────────────────── */
-function UserMessage({ text }: { text: string }) {
+function UserMessage({ text, isVoice }: { text?: string; isVoice?: boolean }) {
   return (
     <div className="message-row">
       <div className="msg-avatar user">Y</div>
       <div className="msg-body">
         <div className="msg-label">You</div>
-        <div className="msg-text">{text}</div>
+        {isVoice ? (
+          <div
+            className="msg-text voice-command-badge"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 14px',
+              borderRadius: 16,
+              background: 'rgba(251, 188, 4, 0.12)',
+              border: '1px solid rgba(251, 188, 4, 0.3)',
+              color: '#fbbc04',
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            <Mic size={14} style={{ flexShrink: 0 }} />
+            <span>Voice Command</span>
+          </div>
+        ) : (
+          <div className="msg-text">{text}</div>
+        )}
       </div>
     </div>
   );

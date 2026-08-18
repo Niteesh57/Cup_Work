@@ -57,7 +57,9 @@ for _event_type in (
 
 # ── Pydantic Request Models ───────────────────────────────────────────────────
 class ChatRequest(BaseModel):
-    prompt: str
+    prompt: Optional[str] = None
+    audioBase64: Optional[str] = None
+    mimeType: Optional[str] = "audio/wav"
     taskId: Optional[str] = None
     userId: Optional[str] = "default"
     model: Optional[str] = None
@@ -110,21 +112,18 @@ async def get_models(apiKey: Optional[str] = None):
 # ── Chat / Agent Prompt Execution ─────────────────────────────────────────────
 @app.post("/api/agent/chat")
 async def execute_chat(req: ChatRequest):
-    logger.info(f"Received chat request: {req.prompt}")
-    if req.model:
-        # Model overrides are only supported by the direct executor path.
-        res = await main_executor_agent.execute_prompt(
-            prompt=req.prompt,
-            task_id=req.taskId,
-            user_id=req.userId or "default",
-            model=req.model,
-        )
-        return res
-
-    # Route through the ADK root agent when no model override is requested.
+    has_audio = bool(req.audioBase64)
+    logger.info(f"Received chat request: prompt={req.prompt!r}, has_audio={has_audio}")
+    if not req.prompt and not has_audio:
+        raise HTTPException(status_code=400, detail="Either prompt or audioBase64 must be provided.")
+    # The root agent is the single orchestrator: it routes to sub-agents
+    # (research, executor, scratchpad, strange_planner, clarification) and can
+    # chain them dynamically. All prompts (text or direct audio) go through it.
     try:
         res = await adk_runner.run(
             prompt=req.prompt,
+            audio_base64=req.audioBase64,
+            mime_type=req.mimeType,
             user_id=req.userId or "default",
             task_id=req.taskId,
         )
@@ -132,7 +131,9 @@ async def execute_chat(req: ChatRequest):
     except Exception as e:
         logger.exception(f"ADK route failed, falling back to direct executor: {e}")
         res = await main_executor_agent.execute_prompt(
-            prompt=req.prompt,
+            prompt=req.prompt or "Execute user's spoken voice command.",
+            audio_base64=req.audioBase64,
+            mime_type=req.mimeType,
             task_id=req.taskId,
             user_id=req.userId or "default",
         )

@@ -64,9 +64,9 @@ export class VoiceEngine {
   constructor(private options: VoiceEngineOptions) {
     this.silenceThreshold = options.silenceThreshold ?? 0.01;
     this.minSpeechMs = options.minSpeechMs ?? 250;
-    this.endSilenceMs = options.endSilenceMs ?? 2000;     // 2s silence
-    this.countdownMs = options.countdownMs ?? 3000;       // 3s countdown
-    this.idleTimeoutMs = options.idleTimeoutMs ?? 30000;  // 30s idle
+    this.endSilenceMs = options.endSilenceMs ?? 1200;     // 1.2s silence after speech
+    this.countdownMs = options.countdownMs ?? 1200;       // 1.2s countdown before emitting
+    this.idleTimeoutMs = options.idleTimeoutMs ?? 0;      // 0 = continuous auto-listen
   }
 
   async start(): Promise<void> {
@@ -211,6 +211,7 @@ export class VoiceEngine {
 
   private startIdleTimer(): void {
     this.stopIdleTimer();
+    if (this.idleTimeoutMs <= 0) return;
     this.idleMs = 0;
     this.idleTimer = setInterval(() => {
       this.idleMs += 250;

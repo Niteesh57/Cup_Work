@@ -48,6 +48,17 @@ async def run_tests():
         print(f"Get Open Windows result success: {windows_res.get('success')}")
         if "windows" in windows_res:
             print(f"Detected {len(windows_res['windows'])} open windows.")
+
+        # Test UIA Interactive Elements
+        uia_res = await electron_bridge.execute_tool("uia_get_interactive_elements", {"maxElements": 10})
+        print(f"Get Interactive Elements success: {uia_res.get('success')}, count: {uia_res.get('count', 0)}")
+        if uia_res.get("elements"):
+            first_el = uia_res["elements"][0]
+            print(f"Sample element: [{first_el.get('controlType')}] '{first_el.get('name')}' -> Center: ({first_el.get('bounds', {}).get('centerX')}, {first_el.get('bounds', {}).get('centerY')})")
+
+        # Test UIA Element Search
+        search_res = await electron_bridge.execute_tool("uia_search_elements", {"query": "e", "maxResults": 5})
+        print(f"Search Elements success: {search_res.get('success')}, count: {search_res.get('count', 0)}")
     except Exception as e:
         print(f"Tool execution warning: {e}")
 

@@ -4,8 +4,10 @@ import fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import dotenv from 'dotenv';
 import WebSocket from 'ws';
-import { showScreenGlow, hideScreenGlow, destroyOverlayWindow } from './overlayWindow';
+import { showScreenGlow, hideScreenGlow, destroyOverlayWindow, updateScreenGlow } from './overlayWindow';
 import { UiaBridge } from './bridge/uiaBridge';
+import { executeBrowserTool, closeLaunchedChrome } from './bridge/browserCdp';
+import { ElementResolver } from './bridge/elementResolver';
 
 // Load initial environment variables from project root .env
 const envPath = [
@@ -24,6 +26,7 @@ let activeTtsProcess: ChildProcess | null = null;
 let wsClient: WebSocket | null = null;
 let wsReconnectTimer: NodeJS.Timeout | null = null;
 const uiaBridge = new UiaBridge();
+const elementResolver = new ElementResolver(uiaBridge);
 
 // ── Python Backend Process Manager ───────────────────────────────────────────
 function startPythonBackend() {
@@ -99,6 +102,7 @@ function cleanExit() {
   console.log('[Main] Cleaning up all resources and child processes...');
   stopAllTts();
   destroyOverlayWindow();
+  closeLaunchedChrome();
   stopPythonBackend();
   if (wsClient) {
     try { wsClient.close(); } catch {}
@@ -107,14 +111,44 @@ function cleanExit() {
 }
 
 // ── WebSocket Bridge with Python Brain ────────────────────────────────────────
+function scheduleWebSocketReconnect(delayMs = 2000) {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (wsClient) {
+    try {
+      wsClient.removeAllListeners();
+      wsClient.terminate();
+    } catch {}
+    wsClient = null;
+  }
+  mainWindow?.webContents.send('backend:status', { connected: false });
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    connectWebSocket();
+  }, delayMs);
+}
+
 function connectWebSocket() {
-  if (wsClient && (wsClient.readyState === WebSocket.OPEN || wsClient.readyState === WebSocket.CONNECTING)) return;
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (wsClient) {
+    try {
+      wsClient.removeAllListeners();
+      wsClient.terminate();
+    } catch {}
+    wsClient = null;
+  }
 
   try {
     console.log(`[Main] Connecting to Python backend WS: ${BACKEND_WS}`);
-    wsClient = new WebSocket(BACKEND_WS);
+    const client = new WebSocket(BACKEND_WS);
+    wsClient = client;
 
-    wsClient.on('open', () => {
+    client.on('open', () => {
       console.log('[Main] Connected to Python Backend WebSocket successfully!');
       if (wsReconnectTimer) {
         clearTimeout(wsReconnectTimer);
@@ -123,7 +157,7 @@ function connectWebSocket() {
       mainWindow?.webContents.send('backend:status', { connected: true });
     });
 
-    wsClient.on('message', async (data) => {
+    client.on('message', async (data) => {
       try {
         const raw = data.toString();
         const msg = JSON.parse(raw);
@@ -132,7 +166,16 @@ function connectWebSocket() {
         if (msg.type === 'TOOL_EXECUTE') {
           console.log(`[Main] Executing tool '${msg.tool}' for task ${msg.taskId}...`);
           try {
-            const result = await uiaBridge.executeTool(msg.tool, msg.args || {});
+            // Resolve-and-act joins local UIA, CDP, and screen-state evidence
+            // before allowing input. Browser DOM tools otherwise route through
+            // CDP; all remaining desktop tools route through UIA.
+            const result = msg.tool === 'resolve_element'
+              ? await elementResolver.resolve(msg.args || {})
+              : msg.tool === 'smart_ui_action'
+                ? await elementResolver.resolveAndAct(msg.args || {})
+                : msg.tool.startsWith('browser_')
+                  ? await executeBrowserTool(msg.tool, msg.args || {})
+                  : await uiaBridge.executeTool(msg.tool, msg.args || {});
             const resp = {
               type: 'TOOL_RESULT',
               id: msg.id,
@@ -182,9 +225,13 @@ function connectWebSocket() {
           }
         }
 
-        // Screen glow on task start
+        // Screen glow on task start / steps / completion
         if (msg.type === 'TASK_START') {
-          showScreenGlow('Thinking…');
+          showScreenGlow('Thinking & Planning…', 'thinking');
+        }
+
+        if (msg.type === 'OBSERVING_SCREEN') {
+          updateScreenGlow('Observing screen…', 'executing');
         }
 
         if (msg.type === 'TASK_COMPLETED' || msg.type === 'TASK_FAILED') {
@@ -195,25 +242,19 @@ function connectWebSocket() {
       }
     });
 
-    wsClient.on('close', () => {
-      console.log('[Main] WebSocket disconnected from Python backend. Retrying in 3s...');
-      wsClient = null;
-      mainWindow?.webContents.send('backend:status', { connected: false });
-      if (!wsReconnectTimer) {
-        wsReconnectTimer = setTimeout(() => connectWebSocket(), 3000);
-      }
+    client.on('close', () => {
+      console.log('[Main] WebSocket disconnected from Python backend. Retrying in 2s...');
+      scheduleWebSocketReconnect(2000);
     });
 
-    wsClient.on('error', (err) => {
-      console.warn('[Main] WebSocket error (will retry):', err.message || err);
-      mainWindow?.webContents.send('backend:status', { connected: false });
+    client.on('error', (err: unknown) => {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn('[Main] WebSocket error (will retry):', errMsg);
+      scheduleWebSocketReconnect(2000);
     });
   } catch (err) {
     console.error('[Main] Failed to initialize WebSocket:', err);
-    mainWindow?.webContents.send('backend:status', { connected: false });
-    if (!wsReconnectTimer) {
-      wsReconnectTimer = setTimeout(() => connectWebSocket(), 3000);
-    }
+    scheduleWebSocketReconnect(2000);
   }
 }
 
@@ -302,8 +343,8 @@ process.on('SIGTERM', () => {
 });
 
 // ── IPC: Execute Prompt (Routed to Python Agent Brain) ────────────────────────
-ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string; apiKey?: string; model?: string; taskId?: string }) => {
-  console.log('[agent:execute-prompt] Sending to Python Brain:', request.prompt, 'taskId:', request.taskId);
+ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string; audioBase64?: string; mimeType?: string; apiKey?: string; model?: string; taskId?: string }) => {
+  console.log('[agent:execute-prompt] Sending to Python Brain:', request.prompt || '[Direct Audio]', 'hasAudio:', !!request.audioBase64, 'taskId:', request.taskId);
   showScreenGlow('Thinking…');
 
   try {
@@ -312,6 +353,8 @@ ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt: string;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: request.prompt,
+        audioBase64: request.audioBase64,
+        mimeType: request.mimeType,
         taskId: request.taskId,
         model: request.model,
         apiKey: request.apiKey,
@@ -384,7 +427,7 @@ ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
   stopAllTts();
 
   try {
-    showScreenGlow('Speaking…');
+    showScreenGlow('🔊 Hey Jave is speaking…', 'speaking');
     const { execFile } = await import('child_process');
     await new Promise<void>((resolve) => {
       activeTtsProcess = execFile(
@@ -412,11 +455,13 @@ ipcMain.handle('voice:stop-speaking', () => {
 });
 
 // ── IPC: Edge glow ───────────────────────────────────────────────────────────
-ipcMain.handle('agent:listen-start', () => {
-  showScreenGlow('Listening…');
+ipcMain.handle('agent:glow-show', (_event, { text, mode }: { text?: string; mode?: 'user-speaking' | 'thinking' | 'executing' | 'speaking' }) => {
+  showScreenGlow(text, mode);
+  return { success: true };
 });
-ipcMain.handle('agent:listen-stop', () => {
+ipcMain.handle('agent:glow-hide', () => {
   hideScreenGlow();
+  return { success: true };
 });
 
 // ── IPC: Configuration Management (Routed to Python Backend & .env) ───────────
@@ -449,10 +494,12 @@ ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>)
   }
 });
 
-// ── Task Controls (pause / resume / cancel) ────────────────────────────────
-async function postTaskAction(action: string, taskId: string): Promise<{ success: boolean; message?: string }> {
+async function postTaskAction(action: string, taskId?: string): Promise<{ success: boolean; message?: string }> {
+  if (!taskId || !taskId.trim()) {
+    return { success: false, message: 'No active task ID provided.' };
+  }
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/agent/${action}/${encodeURIComponent(taskId)}`, {
+    const res = await fetch(`${BACKEND_HTTP}/api/agent/${action}/${encodeURIComponent(taskId.trim())}`, {
       method: 'POST',
     });
     if (!res.ok) {

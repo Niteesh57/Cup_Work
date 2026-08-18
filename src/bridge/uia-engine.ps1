@@ -128,11 +128,24 @@ function Execute-Command ($cmdObj) {
         "KEYBOARD_KEY"     { return Invoke-KeyboardKey -params $params }
         "PRESS_HOTKEY"     { return Invoke-PressHotkey -params $params }
 
-        # UI Automation Tree
-        "UIA_CLICK"        { return Invoke-UiaClick -params $params }
-        "UIA_TYPE"         { return Invoke-UiaType -params $params }
-        "UIA_GET_TREE"     { return Invoke-UiaGetTree -params $params }
-        "UIA_GET_TEXT"     { return Invoke-UiaGetText -params $params }
+        # UI Automation Tree & Semantic Actions
+        "UIA_CLICK"          { return Invoke-UiaClick -params $params }
+        "UIA_TYPE"           { return Invoke-UiaType -params $params }
+        "UIA_GET_TREE"       { return Invoke-UiaGetTree -params $params }
+        "UIA_GET_TEXT"       { return Invoke-UiaGetText -params $params }
+        "UIA_GET_INTERACTIVE_ELEMENTS" { return Invoke-UiaGetInteractiveElements -params $params }
+        "GET_INTERACTIVE_ELEMENTS"     { return Invoke-UiaGetInteractiveElements -params $params }
+        "UIA_SEARCH_ELEMENTS"          { return Invoke-UiaSearchElements -params $params }
+        "SEARCH_ELEMENTS"              { return Invoke-UiaSearchElements -params $params }
+        "UIA_INSPECT_ELEMENT_AT"       { return Invoke-UiaInspectElementAt -params $params }
+        "INSPECT_ELEMENT_AT"           { return Invoke-UiaInspectElementAt -params $params }
+        "UIA_INVOKE"         { return Invoke-UiaInvoke -params $params }
+        "UIA_SET_VALUE"      { return Invoke-UiaSetValue -params $params }
+        "UIA_SELECT"         { return Invoke-UiaSelect -params $params }
+        "UIA_TOGGLE"         { return Invoke-UiaToggle -params $params }
+        "UIA_EXPAND"         { return Invoke-UiaExpand -params $params }
+        "UIA_SCROLL_INTO_VIEW" { return Invoke-UiaScrollIntoView -params $params }
+        "UIA_FIND"           { return Invoke-UiaFind -params $params }
 
         # Screen Capture
         "TAKE_SCREENSHOT"       { return Invoke-TakeScreenshot }
@@ -151,18 +164,16 @@ function Execute-Command ($cmdObj) {
         # Interactive Scratchpad & Question Overlay
         "SHOW_SCRATCHPAD"  {
             $scratchpadPath = Join-Path $scriptDir "scratchpad.ps1"
-            $jsonInput = ($params | ConvertTo-Json -Depth 5 -Compress)
-            $res = & powershell -NoProfile -ExecutionPolicy Bypass -File $scratchpadPath -InputJson $jsonInput
-            try {
-                return ($res | ConvertFrom-Json)
-            } catch {
-                return @{ success = $true; message = "Overlay closed"; raw = $res }
-            }
+            $jsonInput = ($params | ConvertTo-Json -Depth 10 -Compress)
+            $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($jsonInput))
+            Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Sta -File `"$scratchpadPath`" -Base64 $b64" -WindowStyle Hidden
+            return @{ success = $true; message = "Scratchpad displayed on screen" }
         }
         "ASK_HUMAN" {
             $scratchpadPath = Join-Path $scriptDir "scratchpad.ps1"
-            $jsonInput = ($params | ConvertTo-Json -Depth 5 -Compress)
-            $res = & powershell -NoProfile -ExecutionPolicy Bypass -File $scratchpadPath -InputJson $jsonInput
+            $jsonInput = ($params | ConvertTo-Json -Depth 10 -Compress)
+            $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($jsonInput))
+            $res = & powershell -NoProfile -ExecutionPolicy Bypass -Sta -File $scratchpadPath -Base64 $b64
             try {
                 return ($res | ConvertFrom-Json)
             } catch {
@@ -170,20 +181,17 @@ function Execute-Command ($cmdObj) {
             }
         }
 
-        # Screen Annotations: Boxes, Arrows & Highlights
+        # Screen Annotations: Boxes, Arrows & Highlights (Non-blocking / fire-and-forget)
         "SHOW_ANNOTATIONS" {
             $annotPath = Join-Path $scriptDir "screen-annotations.ps1"
-            $jsonInput = ($params | ConvertTo-Json -Depth 5 -Compress)
-            $res = & powershell -NoProfile -ExecutionPolicy Bypass -File $annotPath -InputJson $jsonInput
-            try {
-                return ($res | ConvertFrom-Json)
-            } catch {
-                return @{ success = $true; message = "Annotations closed"; raw = $res }
-            }
+            $jsonInput = ($params | ConvertTo-Json -Depth 10 -Compress)
+            $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($jsonInput))
+            Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Sta -File `"$annotPath`" -Base64 $b64" -WindowStyle Hidden
+            return @{ success = $true; message = "Annotations displayed on screen" }
         }
         "CLEAR_ANNOTATIONS" {
             $annotPath = Join-Path $scriptDir "screen-annotations.ps1"
-            $res = & powershell -NoProfile -ExecutionPolicy Bypass -File $annotPath -ClearOnly
+            $res = & powershell -NoProfile -ExecutionPolicy Bypass -Sta -File $annotPath -ClearOnly
             try {
                 return ($res | ConvertFrom-Json)
             } catch {
@@ -192,13 +200,10 @@ function Execute-Command ($cmdObj) {
         }
         "HIGHLIGHT_BOX" {
             $annotPath = Join-Path $scriptDir "screen-annotations.ps1"
-            $jsonInput = ($params | ConvertTo-Json -Depth 5 -Compress)
-            $res = & powershell -NoProfile -ExecutionPolicy Bypass -File $annotPath -InputJson $jsonInput
-            try {
-                return ($res | ConvertFrom-Json)
-            } catch {
-                return @{ success = $true; message = "Highlight closed"; raw = $res }
-            }
+            $jsonInput = ($params | ConvertTo-Json -Depth 10 -Compress)
+            $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($jsonInput))
+            Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Sta -File `"$annotPath`" -Base64 $b64" -WindowStyle Hidden
+            return @{ success = $true; message = "Highlight displayed on screen" }
         }
 
         default {
@@ -212,7 +217,7 @@ try {
     $cmdObj = Parse-CommandPayload
     if ($null -ne $cmdObj) {
         $result = Execute-Command -cmdObj $cmdObj
-        Write-Output ($result | ConvertTo-Json -Depth 5 -Compress)
+        Write-Output ($result | ConvertTo-Json -Depth 10 -Compress)
     } else {
         Write-Output (@{ success = $false; message = "No valid command payload provided. Use -InputJson, -Base64, or -Action" } | ConvertTo-Json -Compress)
     }

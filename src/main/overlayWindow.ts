@@ -51,22 +51,22 @@ export function createOverlayWindow(): BrowserWindow {
 }
 
 // ── Screen Glow Border ────────────────────────────────────────────────────────
-export function showScreenGlow(promptText?: string) {
+export function showScreenGlow(promptText?: string, mode?: 'user-speaking' | 'thinking' | 'executing' | 'speaking') {
   try {
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
       win.showInactive();
-      win.webContents.send('overlay:show', promptText);
+      win.webContents.send('overlay:show', { text: promptText, mode: mode || 'thinking' });
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to show screen glow:', err);
   }
 }
 
-export function updateScreenGlow(stepThought?: string) {
+export function updateScreenGlow(stepThought?: string, mode?: 'user-speaking' | 'thinking' | 'executing' | 'speaking') {
   try {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.webContents.send('overlay:update', stepThought);
+      overlayWindow.webContents.send('overlay:update', { text: stepThought, mode });
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to update screen glow:', err);

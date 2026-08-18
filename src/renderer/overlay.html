@@ -22,13 +22,47 @@
       pointer-events: none;
       border-radius: 0;
       opacity: 0;
-      transition: opacity 0.4s ease;
+      transition: opacity 0.35s ease, box-shadow 0.35s ease;
       box-shadow: inset 0 0 25px 6px rgba(66,133,244,0.85),
                   inset 0 0 50px 12px rgba(234,67,53,0.45);
     }
     .screen-glow.active {
       opacity: 1;
-      animation: screen-pulse 2s ease-in-out infinite alternate;
+      animation: screen-pulse 2.2s ease-in-out infinite alternate;
+    }
+    .screen-glow.user-speaking {
+      box-shadow: inset 0 0 28px 7px rgba(6,182,212,0.95), inset 0 0 65px 15px rgba(59,130,246,0.55);
+      animation: glow-user 1.6s ease-in-out infinite alternate;
+    }
+    .screen-glow.thinking {
+      box-shadow: inset 0 0 30px 8px rgba(245,158,11,0.9), inset 0 0 70px 18px rgba(139,92,246,0.55);
+      animation: glow-thinking 2.2s ease-in-out infinite alternate;
+    }
+    .screen-glow.executing {
+      box-shadow: inset 0 0 28px 7px rgba(52,168,83,0.95), inset 0 0 60px 14px rgba(6,182,212,0.55);
+      animation: glow-executing 1.8s ease-in-out infinite alternate;
+    }
+    .screen-glow.speaking {
+      box-shadow: inset 0 0 32px 9px rgba(168,85,247,0.95), inset 0 0 70px 16px rgba(59,130,246,0.55);
+      animation: glow-speaking 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes glow-user {
+      0%   { box-shadow: inset 0 0 20px 5px rgba(6,182,212,0.8), inset 0 0 45px 10px rgba(59,130,246,0.4); }
+      100% { box-shadow: inset 0 0 36px 10px rgba(6,182,212,1.0), inset 0 0 80px 20px rgba(59,130,246,0.65); }
+    }
+    @keyframes glow-thinking {
+      0%   { box-shadow: inset 0 0 22px 6px rgba(245,158,11,0.8), inset 0 0 50px 12px rgba(139,92,246,0.4); }
+      50%  { box-shadow: inset 0 0 34px 9px rgba(139,92,246,0.9), inset 0 0 70px 18px rgba(59,130,246,0.55); }
+      100% { box-shadow: inset 0 0 28px 7px rgba(245,158,11,0.9), inset 0 0 55px 14px rgba(239,68,68,0.5); }
+    }
+    @keyframes glow-executing {
+      0%   { box-shadow: inset 0 0 22px 6px rgba(52,168,83,0.85), inset 0 0 45px 12px rgba(6,182,212,0.4); }
+      100% { box-shadow: inset 0 0 36px 10px rgba(52,168,83,1.0),  inset 0 0 75px 18px rgba(6,182,212,0.65); }
+    }
+    @keyframes glow-speaking {
+      0%   { box-shadow: inset 0 0 22px 6px rgba(168,85,247,0.85), inset 0 0 45px 12px rgba(59,130,246,0.4); }
+      100% { box-shadow: inset 0 0 36px 10px rgba(168,85,247,1.0),  inset 0 0 80px 20px rgba(6,182,212,0.65); }
     }
     @keyframes screen-pulse {
       0%   { box-shadow: inset 0 0 25px 6px rgba(66,133,244,0.9),  inset 0 0 55px 14px rgba(52,168,83,0.5); }
@@ -42,7 +76,7 @@
       top: 14px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(12,15,23,0.88);
+      background: rgba(12,15,23,0.90);
       backdrop-filter: blur(14px);
       border: 1px solid rgba(66,133,244,0.4);
       color: #f0f0f0;
@@ -65,9 +99,13 @@
       animation: dot-glow 1s infinite alternate;
       flex-shrink: 0;
     }
+    .screen-glow.user-speaking .pulse-dot { background: #06b6d4; }
+    .screen-glow.thinking .pulse-dot { background: #f59e0b; }
+    .screen-glow.executing .pulse-dot { background: #10b981; }
+    .screen-glow.speaking .pulse-dot { background: #a855f7; }
     @keyframes dot-glow {
-      from { background: #4285f4; transform: scale(0.9); }
-      to   { background: #ea4335; transform: scale(1.25); }
+      from { transform: scale(0.85); opacity: 0.8; }
+      to   { transform: scale(1.3); opacity: 1.0; }
     }
     .prompt-text {
       max-width: 450px;
@@ -290,17 +328,31 @@
     const screenpad  = document.getElementById('screenpad');
 
     // ── Border Glow ──────────────────────────────────────────────────────────
-    ipcRenderer.on('overlay:show', (_e, promptText) => {
-      statusText.textContent = promptText
-        ? `⚡ Hey Jave: ${promptText}`
+    ipcRenderer.on('overlay:show', (_e, data) => {
+      const text = typeof data === 'string' ? data : (data?.text || '');
+      const mode = typeof data === 'object' && data?.mode ? data.mode : 'thinking';
+
+      statusText.textContent = text
+        ? `⚡ Hey Jave: ${text}`
         : `⚡ Hey Jave AI Agent Active on Windows Desktop...`;
-      glow.classList.add('active');
+
+      glow.classList.remove('user-speaking', 'thinking', 'executing', 'speaking');
+      glow.classList.add('active', mode);
     });
+
     ipcRenderer.on('overlay:hide', () => {
-      glow.classList.remove('active');
+      glow.classList.remove('active', 'user-speaking', 'thinking', 'executing', 'speaking');
     });
-    ipcRenderer.on('overlay:update', (_e, stepThought) => {
-      if (stepThought) statusText.textContent = `⚡ Hey Jave: ${stepThought}`;
+
+    ipcRenderer.on('overlay:update', (_e, data) => {
+      const text = typeof data === 'string' ? data : (data?.text || '');
+      const mode = typeof data === 'object' ? data?.mode : undefined;
+
+      if (text) statusText.textContent = `⚡ Hey Jave: ${text}`;
+      if (mode) {
+        glow.classList.remove('user-speaking', 'thinking', 'executing', 'speaking');
+        glow.classList.add(mode);
+      }
     });
 
     // ── Listening Ring (Wake Word) ───────────────────────────────────────────

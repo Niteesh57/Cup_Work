@@ -63,10 +63,19 @@ class ElectronBridge:
     async def execute_tool(self, tool_name: str, args: Dict[str, Any], task_id: str = "") -> Dict[str, Any]:
         """
         Executes a desktop tool via the connected Electron frontend.
-        If no Electron client is connected via WebSocket, falls back to direct PowerShell execution.
+        If no Electron client is connected via WebSocket, waits up to 3s, then falls back
+        to direct PowerShell execution for pure OS tools, and fails closed for DOM/smart tools.
         """
         req_id = str(uuid.uuid4())
         logger.info(f"Executing tool '{tool_name}' (task={task_id}, req={req_id}) with args: {args}")
+
+        # If no client currently registered, give a short grace window (up to 2.5s)
+        # in case Electron is currently establishing the WebSocket connection
+        if not self.has_active_client:
+            for _ in range(12):
+                if self.has_active_client:
+                    break
+                await asyncio.sleep(0.2)
 
         # If Electron client is connected, dispatch over WebSocket
         if self.has_active_client:
@@ -96,7 +105,15 @@ class ElectronBridge:
                 logger.error(f"Tool execution error for {tool_name}: {e}")
                 return {"success": False, "error": str(e)}
 
-        # Direct PowerShell fallback execution
+        # Fail closed for browser and local resolution tools
+        if tool_name in ("smart_ui_action", "resolve_element") or tool_name.startswith("browser_"):
+            logger.warning(f"No active WebSocket client connected. Cannot execute local tool '{tool_name}'.")
+            return {
+                "success": False,
+                "error": f"Electron client is offline. Tool '{tool_name}' requires active Electron WebSocket connection."
+            }
+
+        # Direct PowerShell fallback execution for standalone OS/UIA tools
         logger.info(f"No active WebSocket client. Falling back to direct PowerShell execution for {tool_name}.")
         return await self._execute_direct_powershell(tool_name, args)
 
@@ -104,6 +121,16 @@ class ElectronBridge:
         """Directly invokes uia-engine.ps1 via PowerShell subprocess."""
         if not self._uia_engine_path.exists():
             return {"success": False, "error": f"UIA engine not found at {self._uia_engine_path}"}
+
+        # speak_sync requires the Electron main-process SAPI bridge. When no
+        # WebSocket client is connected, fail fast instead of blocking on a
+        # subprocess that has no handler.
+        if tool_name == "speak_sync":
+            return {"success": False, "error": "No Electron client connected for speak_sync"}
+
+        # Browser DOM tools require the Electron main-process CDP bridge.
+        if tool_name.startswith("browser_"):
+            return {"success": False, "error": f"No Electron client connected for {tool_name}"}
 
         # Map tool name to UIA engine action
         action_map = {
@@ -133,12 +160,23 @@ class ElectronBridge:
             "scroll": "SCROLL",
             "drag_drop": "DRAG_DROP",
             "uia_get_tree": "UIA_GET_TREE",
+            "uia_get_interactive_elements": "GET_INTERACTIVE_ELEMENTS",
+            "uia_search_elements": "SEARCH_ELEMENTS",
+            "uia_inspect_element_at": "INSPECT_ELEMENT_AT",
             "uia_get_text": "UIA_GET_TEXT",
+            "uia_find": "UIA_FIND",
+            "uia_invoke": "UIA_INVOKE",
+            "uia_set_value": "UIA_SET_VALUE",
+            "uia_select": "UIA_SELECT",
+            "uia_toggle": "UIA_TOGGLE",
+            "uia_expand": "UIA_EXPAND",
+            "uia_scroll_into_view": "UIA_SCROLL_INTO_VIEW",
             "show_screenpad": "SHOW_SCRATCHPAD",
             "ask_human": "ASK_HUMAN",
             "highlight_box": "HIGHLIGHT_BOX",
             "show_annotations": "SHOW_ANNOTATIONS",
             "clear_annotations": "CLEAR_ANNOTATIONS",
+            "speak_sync": "SPEAK_SYNC",
         }
 
         # Handle wait_seconds natively
@@ -153,7 +191,11 @@ class ElectronBridge:
         # Normalize parameter names if needed
         if tool_name in ("minimize_window", "focus_window", "restore_window", "resize_window"):
             params["title"] = params.pop("windowTitle", "")
-        elif tool_name in ("uia_click", "uia_type", "uia_get_text"):
+        elif tool_name in (
+            "uia_click", "uia_type", "uia_get_text", "uia_find", "uia_invoke",
+            "uia_set_value", "uia_select", "uia_toggle", "uia_expand",
+            "uia_scroll_into_view",
+        ):
             params["name"] = params.pop("elementName", "")
 
         payload_json = json.dumps({"action": action, "params": params})
@@ -169,10 +211,16 @@ class ElectronBridge:
         ]
 
         def _run_sub():
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
             if proc.returncode != 0:
                 raise RuntimeError(f"PowerShell error: {proc.stderr}")
-            return json.loads(proc.stdout.strip())
+            raw = proc.stdout.strip()
+            if not raw:
+                return {"success": True}
+            # Clean control characters (0x00-0x1F excluding standard \r,\n,\t) to prevent JSON decode failures
+            import re
+            clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', ' ', raw)
+            return json.loads(clean, strict=False)
 
         try:
             res = await asyncio.to_thread(_run_sub)

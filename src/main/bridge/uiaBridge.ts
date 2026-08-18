@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { shell } from 'electron';
 import { UiaActionResult, WindowInfo } from '../../shared/types';
 
 export class UiaBridge {
@@ -236,10 +237,128 @@ export class UiaBridge {
   }
 
   /**
+   * Retrieves all actionable interactive elements (buttons, inputs, links, tabs, etc.)
+   * with their exact bounding boxes and center coordinates.
+   */
+  public async uiaGetInteractiveElements(opts: { windowTitle?: string; maxElements?: number } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_GET_INTERACTIVE_ELEMENTS', {
+      windowTitle: opts.windowTitle || '',
+      maxElements: opts.maxElements || 60,
+    });
+  }
+
+  /**
+   * Searches the UIA element tree for controls matching a query string across
+   * names, automationIds, class names, or control types.
+   */
+  public async uiaSearchElements(query: string, opts: { windowTitle?: string; maxResults?: number } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_SEARCH_ELEMENTS', {
+      query,
+      windowTitle: opts.windowTitle || '',
+      maxResults: opts.maxResults || 30,
+    });
+  }
+
+  /**
+   * Inspects the low-level UI element directly under screen coordinates (x, y).
+   */
+  public async uiaInspectElementAt(x: number, y: number, normalized = false): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_INSPECT_ELEMENT_AT', { x, y, normalized });
+  }
+
+  /**
    * Reads text from a named UIA element
    */
   public async uiaGetText(name: string): Promise<{ success: boolean; text?: string; message?: string }> {
     return this.executeCommand<{ success: boolean; text?: string; message?: string }>('UIA_GET_TEXT', { name });
+  }
+
+  /**
+   * Finds a UIA element by AutomationId first, then Name + ControlType, and
+   * returns its bounds and supported control patterns. Scoped to the focused
+   * window (or a specific window title) before falling back to the desktop root.
+   */
+  public async uiaFind(opts: { name?: string; automationId?: string; controlType?: string; windowTitle?: string } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_FIND', {
+      name: opts.name || '',
+      automationId: opts.automationId || '',
+      controlType: opts.controlType || '',
+      windowTitle: opts.windowTitle || '',
+    });
+  }
+
+  /**
+   * Activates a Button/MenuItem/etc. via the UIA Invoke pattern without moving
+   * the mouse. Falls back to SelectionItem, then (rarely) a center click.
+   */
+  public async uiaInvoke(opts: { name?: string; automationId?: string; controlType?: string; windowTitle?: string } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_INVOKE', {
+      name: opts.name || '',
+      automationId: opts.automationId || '',
+      controlType: opts.controlType || '',
+      windowTitle: opts.windowTitle || '',
+    });
+  }
+
+  /**
+   * Sets text directly in an Edit field via the UIA Value pattern.
+   */
+  public async uiaSetValue(text: string, opts: { name?: string; automationId?: string; controlType?: string; windowTitle?: string } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_SET_VALUE', {
+      name: opts.name || '',
+      automationId: opts.automationId || '',
+      controlType: opts.controlType || '',
+      windowTitle: opts.windowTitle || '',
+      text,
+    });
+  }
+
+  /**
+   * Selects an element (list item, radio, tab) via the UIA SelectionItem pattern.
+   */
+  public async uiaSelect(opts: { name?: string; automationId?: string; controlType?: string; windowTitle?: string } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_SELECT', {
+      name: opts.name || '',
+      automationId: opts.automationId || '',
+      controlType: opts.controlType || '',
+      windowTitle: opts.windowTitle || '',
+    });
+  }
+
+  /**
+   * Toggles a checkbox/switch via the UIA Toggle pattern.
+   */
+  public async uiaToggle(opts: { name?: string; automationId?: string; controlType?: string; windowTitle?: string } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_TOGGLE', {
+      name: opts.name || '',
+      automationId: opts.automationId || '',
+      controlType: opts.controlType || '',
+      windowTitle: opts.windowTitle || '',
+    });
+  }
+
+  /**
+   * Expands a menu/tree node via the UIA ExpandCollapse pattern.
+   */
+  public async uiaExpand(opts: { name?: string; automationId?: string; controlType?: string; windowTitle?: string } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_EXPAND', {
+      name: opts.name || '',
+      automationId: opts.automationId || '',
+      controlType: opts.controlType || '',
+      windowTitle: opts.windowTitle || '',
+    });
+  }
+
+  /**
+   * Scrolls a target element into view via the UIA ScrollItem pattern.
+   */
+  public async uiaScrollIntoView(opts: { name?: string; automationId?: string; controlType?: string; windowTitle?: string } = {}): Promise<Record<string, unknown>> {
+    return this.executeCommand<Record<string, unknown>>('UIA_SCROLL_INTO_VIEW', {
+      name: opts.name || '',
+      automationId: opts.automationId || '',
+      controlType: opts.controlType || '',
+      windowTitle: opts.windowTitle || '',
+    });
   }
 
   /**
@@ -273,8 +392,20 @@ export class UiaBridge {
   /**
    * Renders multi-colored highlight boxes and directional arrows directly on the screen
    */
-  public async showAnnotations(boxes: Array<Record<string, unknown>> = [], arrows: Array<Record<string, unknown>> = [], durationSeconds = 6): Promise<{ success: boolean; message?: string }> {
-    return this.executeCommand<{ success: boolean; message?: string }>('SHOW_ANNOTATIONS', { boxes, arrows, durationSeconds });
+  public async showAnnotations(
+    boxes: Array<Record<string, unknown>> = [],
+    arrows: Array<Record<string, unknown>> = [],
+    durationSeconds = 0,
+    imageWidth?: number,
+    imageHeight?: number
+  ): Promise<{ success: boolean; message?: string }> {
+    return this.executeCommand<{ success: boolean; message?: string }>('SHOW_ANNOTATIONS', {
+      boxes,
+      arrows,
+      durationSeconds,
+      imageWidth,
+      imageHeight
+    });
   }
 
   /**
@@ -285,10 +416,37 @@ export class UiaBridge {
   }
 
   /**
+   * Speaks text asynchronously via Windows SAPI without blocking tool execution.
+   */
+  public async speakSync(text: string): Promise<{ success: boolean; message?: string }> {
+    return new Promise((resolve) => {
+      try {
+        const { execFile } = require('child_process') as typeof import('child_process');
+        execFile(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).SpeakAsync(${JSON.stringify(text)}) | Out-Null`],
+          { maxBuffer: 1024 * 1024 },
+          () => {}
+        );
+      } catch {}
+      // Resolve immediately so speech does not block desktop automation
+      resolve({ success: true, message: 'Spoke commentary' });
+    });
+  }
+
+  /**
    * Unified tool execution dispatcher
    */
   public async executeTool(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     switch (name) {
+      case 'open_url': {
+        const targetUrl = String(args.url || args.link || '');
+        if (targetUrl) {
+          await shell.openExternal(targetUrl);
+          return { success: true, message: `Opened URL: ${targetUrl}` };
+        }
+        return { success: false, message: 'No URL provided' };
+      }
       case 'minimize_all_windows':
         return (await this.minimizeAll()) as unknown as Record<string, unknown>;
       case 'minimize_window':
@@ -372,13 +530,83 @@ export class UiaBridge {
         )) as unknown as Record<string, unknown>;
       case 'uia_get_tree':
         return (await this.uiaGetTree()) as unknown as Record<string, unknown>;
+      case 'uia_get_interactive_elements':
+        return (await this.uiaGetInteractiveElements({
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+          maxElements: args.maxElements !== undefined ? Number(args.maxElements) : undefined,
+        })) as unknown as Record<string, unknown>;
+      case 'uia_search_elements':
+        return (await this.uiaSearchElements(
+          String(args.query || args.search || args.name || ''),
+          {
+            windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+            maxResults: args.maxResults !== undefined ? Number(args.maxResults) : undefined,
+          }
+        )) as unknown as Record<string, unknown>;
+      case 'uia_inspect_element_at':
+        return (await this.uiaInspectElementAt(
+          Number(args.x),
+          Number(args.y),
+          Boolean(args.normalized)
+        )) as unknown as Record<string, unknown>;
       case 'uia_get_text':
         return (await this.uiaGetText(String(args.elementName || args.name || ''))) as unknown as Record<string, unknown>;
+      case 'uia_find':
+        return (await this.uiaFind({
+          name: args.name !== undefined ? String(args.name) : (args.elementName !== undefined ? String(args.elementName) : undefined),
+          automationId: args.automationId !== undefined ? String(args.automationId) : undefined,
+          controlType: args.controlType !== undefined ? String(args.controlType) : undefined,
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+        })) as unknown as Record<string, unknown>;
+      case 'uia_invoke':
+        return (await this.uiaInvoke({
+          name: args.name !== undefined ? String(args.name) : (args.elementName !== undefined ? String(args.elementName) : undefined),
+          automationId: args.automationId !== undefined ? String(args.automationId) : undefined,
+          controlType: args.controlType !== undefined ? String(args.controlType) : undefined,
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+        })) as unknown as Record<string, unknown>;
+      case 'uia_set_value':
+        return (await this.uiaSetValue(String(args.text || ''), {
+          name: args.name !== undefined ? String(args.name) : (args.elementName !== undefined ? String(args.elementName) : undefined),
+          automationId: args.automationId !== undefined ? String(args.automationId) : undefined,
+          controlType: args.controlType !== undefined ? String(args.controlType) : undefined,
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+        })) as unknown as Record<string, unknown>;
+      case 'uia_select':
+        return (await this.uiaSelect({
+          name: args.name !== undefined ? String(args.name) : (args.elementName !== undefined ? String(args.elementName) : undefined),
+          automationId: args.automationId !== undefined ? String(args.automationId) : undefined,
+          controlType: args.controlType !== undefined ? String(args.controlType) : undefined,
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+        })) as unknown as Record<string, unknown>;
+      case 'uia_toggle':
+        return (await this.uiaToggle({
+          name: args.name !== undefined ? String(args.name) : (args.elementName !== undefined ? String(args.elementName) : undefined),
+          automationId: args.automationId !== undefined ? String(args.automationId) : undefined,
+          controlType: args.controlType !== undefined ? String(args.controlType) : undefined,
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+        })) as unknown as Record<string, unknown>;
+      case 'uia_expand':
+        return (await this.uiaExpand({
+          name: args.name !== undefined ? String(args.name) : (args.elementName !== undefined ? String(args.elementName) : undefined),
+          automationId: args.automationId !== undefined ? String(args.automationId) : undefined,
+          controlType: args.controlType !== undefined ? String(args.controlType) : undefined,
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+        })) as unknown as Record<string, unknown>;
+      case 'uia_scroll_into_view':
+        return (await this.uiaScrollIntoView({
+          name: args.name !== undefined ? String(args.name) : (args.elementName !== undefined ? String(args.elementName) : undefined),
+          automationId: args.automationId !== undefined ? String(args.automationId) : undefined,
+          controlType: args.controlType !== undefined ? String(args.controlType) : undefined,
+          windowTitle: args.windowTitle !== undefined ? String(args.windowTitle) : undefined,
+        })) as unknown as Record<string, unknown>;
       case 'show_annotations':
         return (await this.showAnnotations(
           Array.isArray(args.boxes) ? (args.boxes as Array<Record<string, unknown>>) : [],
           Array.isArray(args.arrows) ? (args.arrows as Array<Record<string, unknown>>) : [],
-          args.durationSeconds !== undefined ? Number(args.durationSeconds) : 6
+          args.durationSeconds !== undefined ? Number(args.durationSeconds) : 0,
+          args.imageWidth !== undefined ? Number(args.imageWidth) : undefined,
+          args.imageHeight !== undefined ? Number(args.imageHeight) : undefined
         )) as unknown as Record<string, unknown>;
       case 'clear_annotations':
         return (await this.clearAnnotations()) as unknown as Record<string, unknown>;
@@ -416,6 +644,8 @@ export class UiaBridge {
         await new Promise((r) => setTimeout(r, secs * 1000));
         return { success: true, message: `Waited ${secs} seconds` };
       }
+      case 'speak_sync':
+        return (await this.speakSync(String(args.text || ''))) as unknown as Record<string, unknown>;
       default:
         throw new Error(`Unrecognized tool call in UiaBridge: ${name}`);
     }

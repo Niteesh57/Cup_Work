@@ -25,10 +25,22 @@ param (
     [string[]]$RemainingOptions,
 
     [Parameter()]
-    [string]$Type = "auto" # "command" | "question" | "auto"
+    [string]$Type = "auto", # "command" | "question" | "auto"
+
+    # Base64-encoded JSON payload for reliable cross-process CLI transport
+    [Parameter()]
+    [string]$Base64
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Decode Base64 payload if provided
+if (-not [string]::IsNullOrWhiteSpace($Base64)) {
+    try {
+        $bytes = [Convert]::FromBase64String($Base64)
+        $InputJson = [System.Text.Encoding]::UTF8.GetString($bytes)
+    } catch {}
+}
 
 # Merge any remaining unparsed arguments into options
 if ($RemainingOptions) {

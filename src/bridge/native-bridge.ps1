@@ -295,27 +295,71 @@ public class NativeBridge {
     }
 
     public static void MoveCursor(int x, int y) {
-        SetCursorPos(x, y);
+        MoveHumanized(x, y);
+    }
+
+    // Human-like cursor movement: a cubic Bezier path with slight overshoot /
+    // jitter and variable speed so clicks feel natural instead of teleporting.
+    private static void MoveHumanized(int targetX, int targetY) {
+        System.Drawing.Point start = System.Windows.Forms.Cursor.Position;
+        int sx = start.X, sy = start.Y;
+
+        int dist = Math.Max(1, (int)Math.Sqrt((targetX - sx) * (targetX - sx) + (targetY - sy) * (targetY - sy)));
+        // Larger moves take slightly longer but still feel quick.
+        int steps = Math.Max(12, Math.Min(40, dist / 8));
+        // Randomize control points a bit for a curved, human path.
+        var rnd = new Random();
+        int bendX = (sx + targetX) / 2 + rnd.Next(-dist / 6, dist / 6 + 1);
+        int bendY = (sx + targetY) / 2 + rnd.Next(-dist / 6, dist / 6 + 1);
+        int bendX2 = (sx + targetX) / 2 + rnd.Next(-dist / 8, dist / 8 + 1);
+        int bendY2 = (sx + targetY) / 2 + rnd.Next(-dist / 8, dist / 8 + 1);
+
+        for (int i = 1; i <= steps; i++) {
+            double t = (double)i / steps;
+            // Ease-out so the cursor slows down as it approaches the target.
+            double e = 1 - (1 - t) * (1 - t) * (1 - t);
+            double oneMinus = 1 - e;
+            int px = (int)(oneMinus * oneMinus * oneMinus * sx
+                        + 3 * oneMinus * oneMinus * e * bendX
+                        + 3 * oneMinus * e * e * bendX2
+                        + e * e * e * targetX);
+            int py = (int)(oneMinus * oneMinus * oneMinus * sy
+                        + 3 * oneMinus * oneMinus * e * bendY
+                        + 3 * oneMinus * e * e * bendY2
+                        + e * e * e * targetY);
+            // Small jitter near the end looks human, but snap exactly on the last step.
+            if (i < steps) {
+                px += rnd.Next(-1, 2);
+                py += rnd.Next(-1, 2);
+            } else {
+                px = targetX;
+                py = targetY;
+            }
+            SetCursorPos(px, py);
+            // Variable sleep: faster mid-path, brief pause right before the click.
+            int sleepMs = (i < steps / 2) ? 4 : (i < steps - 3 ? 6 : 12);
+            System.Threading.Thread.Sleep(sleepMs);
+        }
     }
 
     public static void ClickMouse(int x, int y, string button) {
-        SetCursorPos(x, y);
-        System.Threading.Thread.Sleep(30);
+        MoveHumanized(x, y);
+        System.Threading.Thread.Sleep(60 + new Random().Next(0, 80));
         if (button != null && button.Equals("right", StringComparison.OrdinalIgnoreCase)) {
             mouse_event(MOUSEEVENTF_RIGHTDOWN, (uint)x, (uint)y, 0, 0);
-            System.Threading.Thread.Sleep(20);
+            System.Threading.Thread.Sleep(30);
             mouse_event(MOUSEEVENTF_RIGHTUP, (uint)x, (uint)y, 0, 0);
         } else if (button != null && button.Equals("double", StringComparison.OrdinalIgnoreCase)) {
             mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, 0);
-            System.Threading.Thread.Sleep(20);
+            System.Threading.Thread.Sleep(30);
             mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, 0);
-            System.Threading.Thread.Sleep(50);
+            System.Threading.Thread.Sleep(60);
             mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, 0);
-            System.Threading.Thread.Sleep(20);
+            System.Threading.Thread.Sleep(30);
             mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, 0);
         } else {
             mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, 0);
-            System.Threading.Thread.Sleep(20);
+            System.Threading.Thread.Sleep(30);
             mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, 0);
         }
     }

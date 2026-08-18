@@ -35,6 +35,15 @@ def _extract_project_id(creds_path: str) -> str:
     return ""
 
 
+def _resolve_creds(path_str: str) -> str:
+    if not path_str:
+        return default_creds_path
+    p = Path(path_str)
+    if not p.is_absolute():
+        p = (backend_dir / path_str).resolve()
+    return str(p) if p.exists() else str(p)
+
+
 class Config:
     ROOT_DIR: Path = root_dir
     BACKEND_DIR: Path = backend_dir
@@ -51,7 +60,7 @@ class Config:
     USE_VERTEXAI: bool = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "true" if discovered_creds else "false").lower() in ("true", "1", "yes")
     PROJECT_ID: str = os.getenv("GOOGLE_CLOUD_PROJECT", os.getenv("VERTEX_PROJECT_ID", _extract_project_id(default_creds_path)))
     LOCATION: str = os.getenv("GOOGLE_CLOUD_LOCATION", os.getenv("VERTEX_LOCATION", "us-central1"))
-    CREDENTIALS_PATH: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", default_creds_path)
+    CREDENTIALS_PATH: str = _resolve_creds(os.getenv("GOOGLE_APPLICATION_CREDENTIALS", default_creds_path))
 
     # Gemini Developer API Key fallback (if not using Vertex AI)
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
@@ -70,7 +79,7 @@ class Config:
         cls.USE_VERTEXAI = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "true" if discovered_creds else "false").lower() in ("true", "1", "yes")
         cls.PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", os.getenv("VERTEX_PROJECT_ID", _extract_project_id(default_creds_path)))
         cls.LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", os.getenv("VERTEX_LOCATION", "us-central1"))
-        cls.CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", default_creds_path)
+        cls.CREDENTIALS_PATH = _resolve_creds(os.getenv("GOOGLE_APPLICATION_CREDENTIALS", default_creds_path))
         cls.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
         cls.DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
