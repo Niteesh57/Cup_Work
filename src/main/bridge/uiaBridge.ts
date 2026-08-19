@@ -422,9 +422,11 @@ export class UiaBridge {
     return new Promise((resolve) => {
       try {
         const { execFile } = require('child_process') as typeof import('child_process');
+        const script = `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SpeakAsync(${JSON.stringify(text)}) | Out-Null`;
+        const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
         execFile(
           'powershell.exe',
-          ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).SpeakAsync(${JSON.stringify(text)}) | Out-Null`],
+          ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
           { maxBuffer: 1024 * 1024 },
           () => {}
         );

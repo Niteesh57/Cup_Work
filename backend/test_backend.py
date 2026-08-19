@@ -12,8 +12,7 @@ from backend.core.client import GenAIClientManager, get_genai_client
 from backend.storage.sqlite_store import sqlite_store
 from backend.memory.memory_manager import memory_manager
 from backend.tools.definitions import get_desktop_tools
-from backend.agent.executor import main_executor_agent
-from backend.agent.voice_transcriber import voice_transcriber
+from backend.agents import main_executor_agent, voice_transcriber, root_agent
 from backend.bridge.electron_bridge import electron_bridge
 
 async def run_tests():

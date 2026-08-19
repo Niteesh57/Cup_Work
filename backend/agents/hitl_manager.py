@@ -16,8 +16,8 @@ logger = logging.getLogger("hey_jave.hitl")
 class HitlManager:
     """Non-blocking human-in-the-loop coordinator.
 
-    ``ask`` persists the question to SQLite, emits ``HITL_QUESTION`` (which the
-    frontend turns into voice + ScreenPad), then waits for a ``HUMAN_RESPONSE``
+    `ask` persists the question to SQLite, emits `HITL_QUESTION` (which the
+    frontend turns into voice + ScreenPad), then waits for a `HUMAN_RESPONSE`
     over the existing WebSocket. The first answer wins. Answers can be saved as
     preferences so the same question is skipped on later runs.
     """

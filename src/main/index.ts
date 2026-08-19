@@ -21,64 +21,11 @@ const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
 const BACKEND_WS = process.env.PYTHON_BACKEND_WS || `${BACKEND_HTTP.replace(/^http/, 'ws')}/ws`;
 
 let mainWindow: BrowserWindow | null = null;
-let pythonProcess: ChildProcess | null = null;
 let activeTtsProcess: ChildProcess | null = null;
 let wsClient: WebSocket | null = null;
 let wsReconnectTimer: NodeJS.Timeout | null = null;
 const uiaBridge = new UiaBridge();
 const elementResolver = new ElementResolver(uiaBridge);
-
-// ── Python Backend Process Manager ───────────────────────────────────────────
-function startPythonBackend() {
-  const rootDir = process.cwd();
-  const scriptPath = path.resolve(rootDir, 'backend/main.py');
-
-  if (!fs.existsSync(scriptPath)) {
-    console.error('[Main] Python backend script not found at:', scriptPath);
-    return;
-  }
-
-  console.log(`[Main] Spawning Python Backend at ${BACKEND_HTTP}...`);
-  const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
-
-  pythonProcess = spawn(pyCmd, [scriptPath], {
-    cwd: rootDir,
-    env: { ...process.env, PYTHONUNBUFFERED: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  pythonProcess.stdout?.on('data', (data) => {
-    console.log(`[Python Backend] ${data.toString().trim()}`);
-  });
-
-  pythonProcess.stderr?.on('data', (data) => {
-    console.error(`[Python Backend Err] ${data.toString().trim()}`);
-  });
-
-  pythonProcess.on('exit', (code, signal) => {
-    console.log(`[Main] Python Backend exited (code=${code}, signal=${signal})`);
-    pythonProcess = null;
-  });
-
-  // Connect WebSocket once backend starts
-  setTimeout(() => connectWebSocket(), 1500);
-}
-
-function stopPythonBackend() {
-  if (pythonProcess && pythonProcess.pid) {
-    console.log(`[Main] Stopping Python backend process (PID=${pythonProcess.pid})...`);
-    try {
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', String(pythonProcess.pid), '/f', '/t']);
-      } else {
-        pythonProcess.kill('SIGTERM');
-      }
-    } catch (e) {
-      console.error('[Main] Error stopping Python backend:', e);
-    }
-    pythonProcess = null;
-  }
-}
 
 // ── TTS Process Manager ───────────────────────────────────────────────────────
 function stopAllTts() {
@@ -103,7 +50,6 @@ function cleanExit() {
   stopAllTts();
   destroyOverlayWindow();
   closeLaunchedChrome();
-  stopPythonBackend();
   if (wsClient) {
     try { wsClient.close(); } catch {}
     wsClient = null;
@@ -164,7 +110,29 @@ function connectWebSocket() {
 
         // Tool execution requested by Python brain
         if (msg.type === 'TOOL_EXECUTE') {
-          console.log(`[Main] Executing tool '${msg.tool}' for task ${msg.taskId}...`);
+          const tool = String(msg.tool || '');
+          const args = (msg.args || {}) as Record<string, unknown>;
+          console.log(`[Main] Executing tool '${tool}' for task ${msg.taskId}...`);
+
+          // Update Screen Glow dynamically with live user-friendly feedback
+          let actionLabel = `Running tool: ${tool}`;
+          if (tool === 'smart_ui_action' || tool === 'uia_invoke') {
+            const targetName = String(args.name || args.elementName || (args.target as Record<string, unknown>)?.name || '');
+            actionLabel = targetName ? `Interacting with "${targetName}"` : 'Interacting with UI component';
+          } else if (tool === 'show_annotations') {
+            actionLabel = 'Highlighting actionable items on screen';
+          } else if (tool === 'uia_search_elements') {
+            actionLabel = `Searching for "${args.query || 'element'}" in Windows`;
+          } else if (tool === 'uia_get_interactive_elements') {
+            actionLabel = 'Scanning desktop interactive controls';
+          } else if (tool === 'take_screenshot' || tool === 'screenshot_region') {
+            actionLabel = 'Inspecting screen view';
+          } else if (tool.startsWith('browser_')) {
+            actionLabel = `Browser action: ${tool.replace('browser_', '')}`;
+          }
+          showScreenGlow(`🛠️ ${actionLabel}`, 'executing');
+          mainWindow?.webContents.send('agent:live-action', { tool, label: actionLabel, args });
+
           try {
             // Resolve-and-act joins local UIA, CDP, and screen-state evidence
             // before allowing input. Browser DOM tools otherwise route through
@@ -209,11 +177,23 @@ function connectWebSocket() {
 
         // Forward executor state changes
         if (msg.type === 'STATE_CHANGE') {
+          const st = String(msg.state || '');
+          const stateLabel = st === 'planning' ? 'Planning next steps…'
+            : st === 'acting' ? 'Executing automation steps…'
+            : st === 'verifying' ? 'Verifying result on screen…'
+            : st === 'waiting_hitl' ? 'Waiting for your confirmation…'
+            : st === 'paused' ? 'Paused'
+            : undefined;
+          if (stateLabel) {
+            updateScreenGlow(stateLabel, st === 'acting' ? 'executing' : 'thinking');
+          }
           mainWindow?.webContents.send('agent:state-change', msg);
         }
 
         // Forward commentary text
         if (msg.type === 'COMMENTARY') {
+          const text = String(msg.text || '');
+          if (text) updateScreenGlow(text, 'speaking');
           mainWindow?.webContents.send('agent:commentary', msg);
         }
 
@@ -235,7 +215,7 @@ function connectWebSocket() {
         }
 
         if (msg.type === 'TASK_COMPLETED' || msg.type === 'TASK_FAILED') {
-          hideScreenGlow();
+          setTimeout(() => hideScreenGlow(), 1200);
         }
       } catch (err) {
         console.error('[Main] Error parsing WebSocket message:', err);
@@ -307,7 +287,7 @@ app.whenReady().then(async () => {
     callback(false);
   });
 
-  startPythonBackend();
+  connectWebSocket();
   createWindow();
 
   app.on('activate', () => {
@@ -429,10 +409,15 @@ ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
   try {
     showScreenGlow('🔊 Hey Jave is speaking…', 'speaking');
     const { execFile } = await import('child_process');
+    
+    // Safely encode SAPI PowerShell script in UTF-16LE Base64 for -EncodedCommand (prevents quote/character parsing bugs)
+    const script = `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 1; $synth.Speak(${JSON.stringify(text)})`;
+    const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+
     await new Promise<void>((resolve) => {
       activeTtsProcess = execFile(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak(${JSON.stringify(text)})`],
+        ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
         { maxBuffer: 1024 * 1024 },
         () => {
           activeTtsProcess = null;

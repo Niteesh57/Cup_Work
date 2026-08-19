@@ -41,9 +41,21 @@ async function speak(text: string): Promise<void> {
   if (!plain) return;
   console.log('[TTS] Speaking:', plain.slice(0, 80) + '…');
   try {
-    await ipc()?.invoke('voice:speak', { text: plain });
+    const res = await ipc()?.invoke('voice:speak', { text: plain }) as { success?: boolean; error?: string } | undefined;
+    if (res && res.success === false && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(plain);
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
   } catch (err) {
-    console.error('[App] TTS failed:', err);
+    console.error('[App] Main TTS failed, fallback to Web Speech API:', err);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(plain);
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
   }
 }
 
@@ -90,7 +102,7 @@ export default function App() {
   const [hitlQuestion, setHitlQuestion] = useState<HitlQuestion | null>(null);
   const [commentary, setCommentary] = useState('');
   const [config, setConfig] = useState<AppConfig>({
-    geminiModel: 'gemini-2.5-flash',
+    geminiModel: 'gemini-3.7-flash',
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -286,6 +298,13 @@ export default function App() {
       setCommentary(c.text);
     };
 
+    const onLiveAction = (_: unknown, data: unknown) => {
+      const act = data as { tool: string; label?: string };
+      if (act?.label) {
+        setCommentary(act.label);
+      }
+    };
+
     const onTtsSpeak = (_: unknown, data: unknown) => {
       const c = data as { text: string };
       if (c.text) void speak(c.text);
@@ -296,6 +315,7 @@ export default function App() {
     renderer.on('agent:state-change', onStateChange);
     renderer.on('agent:hitl-question', onHitlQuestion);
     renderer.on('agent:commentary', onCommentary);
+    renderer.on('agent:live-action', onLiveAction);
     renderer.on('agent:tts-speak', onTtsSpeak);
 
     return () => {
@@ -304,6 +324,7 @@ export default function App() {
       renderer.removeAllListeners('agent:state-change');
       renderer.removeAllListeners('agent:hitl-question');
       renderer.removeAllListeners('agent:commentary');
+      renderer.removeAllListeners('agent:live-action');
       renderer.removeAllListeners('agent:tts-speak');
     };
   }, []);
@@ -367,7 +388,7 @@ export default function App() {
     setActiveTaskId(currentTaskId);
     setMessages(prev => [
       ...prev,
-      { id: userMsgId, role: 'user', text: trimmed, isVoice: opts.isVoice },
+      { id: userMsgId, role: 'user', text: trimmed || '🎤 Spoken Voice Input', isVoice: opts.isVoice },
       { id: agentMsgId, role: 'agent', status: 'thinking', steps: [] },
     ]);
     setStatus('executing');
@@ -375,20 +396,6 @@ export default function App() {
     setHitlQuestion(null);
     lastUtteranceRef.current = null;
     showBorderGlow(true, '⚡ Thinking & Planning…', 'thinking');
-
-    // If audio is provided, optionally transcribe in parallel for user message text display
-    if (opts.isVoice && opts.audioBase64 && !trimmed) {
-      ipc()?.invoke('voice:transcribe', {
-        audioBase64: opts.audioBase64,
-        mimeType: opts.mimeType,
-      }).then((res) => {
-        const trans = res as { success: boolean; text?: string } | undefined;
-        if (trans?.success && trans.text) {
-          const cleanText = trans.text.trim().replace(/^["']|["']$/g, '').trim();
-          setMessages(prev => prev.map(m => m.id === userMsgId ? { ...m, text: cleanText } : m));
-        }
-      }).catch(() => {});
-    }
 
     try {
       const renderer = ipc();
@@ -537,39 +544,6 @@ export default function App() {
           <div ref={chatEndRef} />
           <CommentaryBanner text={commentary} />
         </main>
-
-        {/* ── Human-in-the-loop Question ── */}
-        {hitlQuestion && (
-          <div className="hitl-panel">
-            <div className="hitl-question">{hitlQuestion.question}</div>
-            <div className="hitl-options">
-              {hitlQuestion.options.map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => handleHitlAnswer(opt)}
-                  className="hitl-option"
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleHitlAnswer((e.target as HTMLFormElement).hitlFreeText.value);
-                (e.target as HTMLFormElement).reset();
-              }}
-              className="hitl-freeform"
-            >
-              <input
-                name="hitlFreeText"
-                placeholder="Or type your answer…"
-                className="hitl-input"
-              />
-              <button type="submit" className="hitl-send">Send</button>
-            </form>
-          </div>
-        )}
 
         {/* ── Bottom Dock Bar (Voice & Task Execution Controls) ── */}
         <div className="voice-bar">

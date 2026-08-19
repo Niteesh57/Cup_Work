@@ -8,10 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.config import config
-from backend.core.client import GenAIClientManager
-from backend.agent.executor import main_executor_agent, executor_manager
-from backend.agent.voice_transcriber import voice_transcriber
-from backend.agent.hitl_manager import hitl_manager
+from backend.agents import main_executor_agent, executor_manager, voice_transcriber, hitl_manager
 from backend.bridge.electron_bridge import electron_bridge
 from backend.events.event_bus import EventType, event_bus
 from backend.events.commentary import commentary_translator
@@ -73,16 +70,6 @@ class TranscribeRequest(BaseModel):
     mimeType: Optional[str] = "audio/wav"
     apiKey: Optional[str] = None
 
-class ConfigUpdateRequest(BaseModel):
-    geminiApiKey: Optional[str] = None
-    geminiModel: Optional[str] = None
-    useVertexAi: Optional[bool] = None
-    projectId: Optional[str] = None
-    location: Optional[str] = None
-    credentialsPath: Optional[str] = None
-    uiaTimeoutMs: Optional[int] = None
-    enableVisionFallback: Optional[bool] = None
-
 class FactRequest(BaseModel):
     userId: Optional[str] = "default"
     key: str
@@ -95,19 +82,40 @@ async def health_check():
         "status": "ok",
         "service": "hey-jave-brain",
         "vertex_ai": config.USE_VERTEXAI,
-        "project_id": config.PROJECT_ID or None,
         "default_model": config.DEFAULT_MODEL,
-        "active_clients": len(electron_bridge._clients)
+        "active_clients": len(electron_bridge._clients),
     }
 
 @app.get("/api/models")
 async def get_models(apiKey: Optional[str] = None):
     try:
-        models = GenAIClientManager.list_models(api_key=apiKey)
+        from backend.core.client import list_models
+        models = list_models()
         return {"models": models}
     except Exception as e:
         logger.error(f"Error fetching models: {e}")
         return {"models": [], "error": str(e)}
+
+@app.get("/api/config")
+async def get_config():
+    return {
+        "geminiApiKey": config.GEMINI_API_KEY,
+        "geminiModel": config.DEFAULT_MODEL,
+        "useVertexAi": config.USE_VERTEXAI,
+        "uiaTimeoutMs": config.UIA_TIMEOUT_MS,
+        "enableVisionFallback": config.ENABLE_VISION_FALLBACK,
+    }
+
+@app.post("/api/config")
+async def update_config(data: Dict[str, Any] = Body(...)):
+    try:
+        if "geminiApiKey" in data and data["geminiApiKey"]:
+            config.GEMINI_API_KEY = str(data["geminiApiKey"])
+        if "geminiModel" in data and data["geminiModel"]:
+            config.DEFAULT_MODEL = str(data["geminiModel"])
+        return {"success": True, "message": "Configuration updated"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 # ── Chat / Agent Prompt Execution ─────────────────────────────────────────────
 @app.post("/api/agent/chat")
@@ -173,63 +181,6 @@ async def transcribe_voice(req: TranscribeRequest):
         logger.error(f"Transcription error: {e}")
         return {"success": False, "error": str(e)}
 
-# ── Configuration Management ──────────────────────────────────────────────────
-@app.get("/api/config")
-async def get_config():
-    return {
-        "geminiApiKey": config.GEMINI_API_KEY,
-        "geminiModel": config.DEFAULT_MODEL,
-        "useVertexAi": config.USE_VERTEXAI,
-        "projectId": config.PROJECT_ID,
-        "location": config.LOCATION,
-        "credentialsPath": config.CREDENTIALS_PATH,
-        "uiaTimeoutMs": config.UIA_TIMEOUT_MS,
-        "enableVisionFallback": config.ENABLE_VISION_FALLBACK,
-    }
-
-@app.post("/api/config")
-async def update_config(req: ConfigUpdateRequest):
-    try:
-        lines = []
-        if config.ENV_FILE_PATH.exists():
-            with open(config.ENV_FILE_PATH, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-
-        env_dict: Dict[str, str] = {}
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                env_dict[k.strip()] = v.strip()
-
-        if req.geminiApiKey is not None:
-            env_dict["GEMINI_API_KEY"] = req.geminiApiKey
-        if req.geminiModel is not None:
-            env_dict["GEMINI_MODEL"] = req.geminiModel
-        if req.useVertexAi is not None:
-            env_dict["GOOGLE_GENAI_USE_VERTEXAI"] = "true" if req.useVertexAi else "false"
-        if req.projectId is not None:
-            env_dict["GOOGLE_CLOUD_PROJECT"] = req.projectId
-        if req.location is not None:
-            env_dict["GOOGLE_CLOUD_LOCATION"] = req.location
-        if req.credentialsPath is not None:
-            env_dict["GOOGLE_APPLICATION_CREDENTIALS"] = req.credentialsPath
-        if req.uiaTimeoutMs is not None:
-            env_dict["UIA_TIMEOUT_MS"] = str(req.uiaTimeoutMs)
-        if req.enableVisionFallback is not None:
-            env_dict["ENABLE_VISION_FALLBACK"] = "true" if req.enableVisionFallback else "false"
-
-        with open(config.ENV_FILE_PATH, "w", encoding="utf-8") as f:
-            for k, v in env_dict.items():
-                f.write(f"{k}={v}\n")
-
-        config.reload()
-        GenAIClientManager.get_client(force_refresh=True)
-
-        return {"success": True, "message": "Configuration updated"}
-    except Exception as e:
-        logger.error(f"Error saving config: {e}")
-        return {"success": False, "error": str(e)}
 
 # ── Memory & Fact APIs ────────────────────────────────────────────────────────
 @app.get("/api/memory")

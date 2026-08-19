@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 import base64
 import logging
 from typing import Optional
@@ -7,9 +10,10 @@ from backend.config import config
 
 logger = logging.getLogger("hey_jave.transcribe")
 
+
 class VoiceTranscriber:
-    """
-    Multimodal audio transcriber using Google GenAI SDK.
+    """Multimodal audio transcriber using Google GenAI SDK.
+
     Transcribes microphone WAV / WebM audio directly via Gemini.
     """
 
@@ -45,10 +49,10 @@ class VoiceTranscriber:
                 )
             )
 
-        import asyncio
         response = await asyncio.to_thread(_call_gemini)
         transcript = (response.text or "").strip()
         logger.info(f"Transcription result: {transcript}")
         return transcript
+
 
 voice_transcriber = VoiceTranscriber()

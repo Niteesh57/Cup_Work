@@ -1,23 +1,51 @@
-import os
-from google import genai
+from google.genai import types
+from backend.core.client import get_genai_client
 from backend.config import config
 
-client = genai.Client()
 
-tools = [
-    {
-        'type': 'google_search',
-    },
-]
+def generate():
+    client = get_genai_client()
+    model = config.DEFAULT_MODEL
 
-generation_config = {
-    'max_output_tokens': 2048,
-    'top_p': 0.95,
-}
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(
+                    text="Hello Gemini! Introduce yourself in one sentence."
+                )
+            ],
+        )
+    ]
 
-response = client.models.generate_content(
-    model='gemini-2.5-flash',
-    contents='Explain how autonomous multi-agent systems handle task decomposition in short 1 line.',
-)
+    tools = [
+        types.Tool(google_search=types.GoogleSearch()),
+        types.Tool(google_maps=types.GoogleMaps()),
+    ]
 
-print('Agent Response:', response.text)
+    generate_content_config = types.GenerateContentConfig(
+        max_output_tokens=2048,
+        tools=tools,
+        thinking_config=types.ThinkingConfig(
+            thinking_level="MEDIUM",
+        ),
+    )
+
+    for chunk in client.models.generate_content_stream(
+        model=model,
+        contents=contents,
+        config=generate_content_config,
+    ):
+        if (
+            not chunk.candidates
+            or not chunk.candidates[0].content
+            or not chunk.candidates[0].content.parts
+        ):
+            continue
+
+        print(chunk.text, end="")
+    print()
+
+
+if __name__ == "__main__":
+    generate()

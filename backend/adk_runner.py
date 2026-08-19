@@ -9,8 +9,7 @@ from google.adk.apps import App
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from backend.agent.executor import executor_manager
-from backend.agent.root_agent import root_agent
+from backend.agents import executor_manager, root_agent
 from backend.core.client import get_genai_client
 
 logger = logging.getLogger("hey_jave.adk")

@@ -1,14 +1,11 @@
 /**
- * Native voice engine — microphone capture + energy-based VAD state machine.
+ * Native voice engine — high performance microphone capture + VAD state machine.
  *
  * Lifecycle:
- *   IDLE       — not yet activated (waiting for "hey")
- *   LISTENING  — activated, listening for speech
+ *   IDLE       — ready
+ *   LISTENING  — listening for speech
  *   SPEAKING   — speech detected
- *   COUNTDOWN  — 2s silence elapsed, showing 3-2-1 (speech resets it)
- *   → emit utterance → back to LISTENING
- *
- * A 30s idle timeout deactivates the session if no speech arrives.
+ *   → emits utterance immediately upon end of speech
  */
 
 export interface UtteranceResult {
@@ -27,9 +24,9 @@ export interface VoiceEngineOptions {
 
   silenceThreshold?: number; // RMS below this = silence (0..1)
   minSpeechMs?: number;      // minimum speech duration before treating as speech
-  endSilenceMs?: number;     // silence to transition SPEAKING -> COUNTDOWN
-  countdownMs?: number;      // countdown duration (3-2-1) before emitting
-  idleTimeoutMs?: number;    // auto-deactivate after this much silence
+  endSilenceMs?: number;     // silence after speech before emitting
+  countdownMs?: number;      // optional countdown (0 = immediate emit)
+  idleTimeoutMs?: number;    // auto-deactivate after this much silence (0 = continuous)
 }
 
 export class VoiceEngine {
@@ -38,7 +35,7 @@ export class VoiceEngine {
   private processor: ScriptProcessorNode | null = null;
   private analyser: AnalyserNode | null = null;
 
-  private active = false;        // session activated (wake word heard)
+  private active = false;
   private state: VoiceState = 'IDLE';
 
   private chunks: Float32Array[] = [];
@@ -64,9 +61,9 @@ export class VoiceEngine {
   constructor(private options: VoiceEngineOptions) {
     this.silenceThreshold = options.silenceThreshold ?? 0.01;
     this.minSpeechMs = options.minSpeechMs ?? 250;
-    this.endSilenceMs = options.endSilenceMs ?? 1200;     // 1.2s silence after speech
-    this.countdownMs = options.countdownMs ?? 1200;       // 1.2s countdown before emitting
-    this.idleTimeoutMs = options.idleTimeoutMs ?? 0;      // 0 = continuous auto-listen
+    this.endSilenceMs = options.endSilenceMs ?? 750;       // 750ms silence triggers instant completion
+    this.countdownMs = options.countdownMs ?? 0;          // 0 = immediate emit without countdown delay
+    this.idleTimeoutMs = options.idleTimeoutMs ?? 0;      // 0 = continuous listen
   }
 
   async start(): Promise<void> {
@@ -78,6 +75,7 @@ export class VoiceEngine {
         sampleRate: this.sampleRate,
         echoCancellation: true,
         noiseSuppression: true,
+        autoGainControl: true,
       },
     });
 
@@ -95,10 +93,9 @@ export class VoiceEngine {
 
     this.processor.onaudioprocess = (e) => this.handleAudio(e.inputBuffer.getChannelData(0));
 
-    this.setState('IDLE');
+    this.setState('LISTENING');
   }
 
-  /** Activate the session after the wake word is heard. */
   activate(): void {
     if (this.active) return;
     this.active = true;
@@ -106,7 +103,6 @@ export class VoiceEngine {
     this.startIdleTimer();
   }
 
-  /** Deactivate and stop listening (without passing audio). */
   deactivate(): void {
     this.active = false;
     this.stopCountdown();
@@ -136,7 +132,6 @@ export class VoiceEngine {
     const isSpeech = rms > this.silenceThreshold;
 
     if (isSpeech) {
-      // Speech resumes during countdown → cancel countdown, keep listening.
       if (this.countdownStarted) {
         this.stopCountdown();
       }
@@ -148,21 +143,24 @@ export class VoiceEngine {
       return;
     }
 
-    // Silence.
+    // Silence
     this.silenceMs += (samples.length / this.sampleRate) * 1000;
 
     if (this.speechStarted) {
-      // Keep a short buffer during silence so words aren't clipped.
       this.chunks.push(new Float32Array(samples));
 
-      // 2s silence reached → start the 3s countdown.
-      if (!this.countdownStarted && this.silenceMs >= this.endSilenceMs) {
-        this.countdownStarted = true;
-        this.countdownRemainingMs = this.countdownMs;
-        this.countdownTick = Math.ceil(this.countdownRemainingMs / 1000);
-        this.setState('COUNTDOWN');
-        this.emitCountdown(this.countdownTick);
-        this.startCountdownTimer();
+      // Silence threshold reached
+      if (this.silenceMs >= this.endSilenceMs) {
+        if (this.countdownMs > 0 && !this.countdownStarted) {
+          this.countdownStarted = true;
+          this.countdownRemainingMs = this.countdownMs;
+          this.countdownTick = Math.ceil(this.countdownRemainingMs / 1000);
+          this.setState('COUNTDOWN');
+          this.emitCountdown(this.countdownTick);
+          this.startCountdownTimer();
+        } else if (this.countdownMs <= 0) {
+          this.finishUtterance();
+        }
       }
     }
   }
@@ -170,7 +168,7 @@ export class VoiceEngine {
   private startCountdownTimer(): void {
     if (this.countdownTimer) clearInterval(this.countdownTimer);
     this.countdownTimer = setInterval(() => {
-      this.countdownRemainingMs -= 250;
+      this.countdownRemainingMs -= 200;
       if (this.countdownRemainingMs <= 0) {
         this.stopCountdown();
         this.finishUtterance();
@@ -181,7 +179,7 @@ export class VoiceEngine {
         this.countdownTick = tick;
         this.emitCountdown(tick);
       }
-    }, 250);
+    }, 200);
   }
 
   private stopCountdown(): void {
@@ -217,7 +215,6 @@ export class VoiceEngine {
       this.idleMs += 250;
       if (this.idleMs >= this.idleTimeoutMs) {
         this.stopIdleTimer();
-        // No speech for 30s — deactivate without sending anything.
         this.options.onIdleTimeout?.();
         this.deactivate();
       }

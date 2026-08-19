@@ -1,44 +1,23 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from google.adk.agents import LlmAgent
-from google.adk.tools import ToolContext
 
-from backend.agent.hitl_manager import hitl_manager
+from backend.agents._tools import ask_human_tool
 from backend.config import config
-
-
-async def ask_user_question(
-    question: str,
-    options: Optional[list[str]] = None,
-    tool_context: ToolContext = None,
-) -> dict[str, str]:
-    """Asks the user a single question and waits for their answer."""
-    user_id = tool_context.user_id if tool_context else "default"
-    task_id = str(tool_context.state.get("task_id", "")) if tool_context else ""
-    answer = await hitl_manager.ask(
-        question=question,
-        options=options or [],
-        task_id=task_id,
-        user_id=user_id,
-    )
-    return {"answer": answer or ""}
-
 
 clarification_agent = LlmAgent(
     name="clarification",
     description=(
-        "Asks the user one clarifying question at a time when the main executor "
-        "cannot proceed safely without more information."
+        "Handles interactive questions, user quizzes, and human-in-the-loop clarifications. "
+        "Presents questions one at a time via voice and ScreenPad, collects responses, and evaluates them."
     ),
     model=config.DEFAULT_MODEL,
     instruction=(
-        "You are the Clarification Agent. Ask the user exactly ONE question at a "
-        "time using the ask_user_question tool, then wait for the answer before "
-        "asking the next one. Prefer multiple-choice options when the possible "
-        "answers are finite. Once you have enough information, return a concise "
-        "summary of the collected answers so the executor can continue."
+        "You are the Interactive Clarification & Quiz Agent. Your job is to engage with the user interactively:\n"
+        "1. Ask the user ONE question at a time using `ask_human_tool`.\n"
+        "2. Provide options whenever appropriate (e.g. multiple-choice choices or 'Yes'/'No').\n"
+        "3. Wait for their response, give immediate feedback, and proceed to the next question if in a multi-question quiz or flow.\n"
+        "4. Keep questions engaging, clear, and concise."
     ),
-    tools=[ask_user_question],
+    tools=[ask_human_tool],
 )

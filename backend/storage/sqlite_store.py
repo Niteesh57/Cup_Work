@@ -193,6 +193,12 @@ class SqliteStore:
             )
             conn.commit()
 
+    def save_action(self, task_id: str, action_name: str, args: Dict[str, Any], result: Any, success: bool, duration_ms: int = 0, timestamp_ms: int = 0):
+        level = "INFO" if success else "ERROR"
+        message = f"Action '{action_name}' ({duration_ms}ms)"
+        details = {"action": action_name, "args": args, "result": result, "success": success, "durationMs": duration_ms}
+        self.log_step(task_id, level, message, details, timestamp_ms=timestamp_ms)
+
     # Preferences
     def set_preference(self, user_id: str, key: str, value: str, confidence: float = 1.0, timestamp_ms: int = 0):
         with self._get_connection() as conn:

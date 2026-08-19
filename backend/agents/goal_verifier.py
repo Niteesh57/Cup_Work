@@ -28,10 +28,8 @@ class VerificationResult:
 class GoalVerifier:
     """Multimodal check of whether the screen actually shows the goal is done.
 
-    This is deliberately separate from the executor's planning loop: it uses a
-    fresh Gemini vision call with the goal text and a screenshot (full or
-    region) and asks for a structured verdict instead of inferring success from
-    the executor stopping.
+    Uses a Gemini vision call with the goal text and screenshot to verify
+    whether the user's desktop task has been achieved.
     """
 
     def __init__(self, model: Optional[str] = None) -> None:
