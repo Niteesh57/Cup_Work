@@ -299,13 +299,46 @@ class MainExecutorAgent:
                             actions += 1
 
                     steps.append(step_result)
+
+                    # Sanitize function response to avoid putting huge base64 strings in JSON text
+                    raw_res = step_result.get("result")
+                    clean_res = raw_res
+                    screenshot_bytes = None
+                    if isinstance(raw_res, dict):
+                        clean_res = dict(raw_res)
+                        if "base64" in clean_res:
+                            b64_val = clean_res.pop("base64")
+                            clean_res["screenshot_captured"] = True
+                            if b64_val and isinstance(b64_val, str) and len(b64_val) > 100:
+                                try:
+                                    screenshot_bytes = base64.b64decode(b64_val)
+                                except Exception:
+                                    pass
+
                     tool_response_parts.append(types.Part.from_function_response(
                         name=func_name,
-                        response={"result": step_result.get("result")},
+                        response={"result": clean_res},
                     ))
+                    if screenshot_bytes:
+                        tool_response_parts.append(types.Part.from_bytes(
+                            data=screenshot_bytes,
+                            mime_type="image/png",
+                        ))
 
                 if tool_response_parts:
                     contents.append(types.Content(role="tool", parts=tool_response_parts))
+
+                # Prune older inline image parts in conversation history if more than 3 screenshots exist
+                all_image_parts = []
+                for c in contents:
+                    for p in c.parts:
+                        if getattr(p, "inline_data", None) is not None:
+                            all_image_parts.append(p)
+                if len(all_image_parts) > 3:
+                    for old_img in all_image_parts[:-3]:
+                        old_img.inline_data = None
+                        old_img.text = "[Older screenshot pruned for token budget]"
+
 
             return self._finish(task_id, True, "Completed all planned steps.", steps, AgentState.COMPLETED, user_id)
 

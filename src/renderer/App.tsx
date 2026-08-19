@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AgentStatus, AgentStep, AppConfig, ExecutionResponse, ExecutorState, HitlQuestion } from '../shared/types';
+import { AgentStatus, AgentStep, AppConfig, ExecutionResponse, ExecutorState } from '../shared/types';
 import { VoiceEngine } from './voiceEngine';
 import {
   Bot, CheckCircle2, XCircle, Loader2, Zap, Monitor, Type, Keyboard, Mic, X,
   Pause, Play, Square
 } from 'lucide-react';
 import { CommentaryBanner } from './components/CommentaryBanner';
+import { MarkdownView } from './components/MarkdownView';
+
 
 /* ── Safe IPC accessor (lazy — avoids module-level crash) ────── */
 function ipc() {
@@ -99,7 +101,6 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [executorState, setExecutorState] = useState<ExecutorState | 'idle'>('idle');
   const [activeTaskId, setActiveTaskId] = useState<string>('');
-  const [hitlQuestion, setHitlQuestion] = useState<HitlQuestion | null>(null);
   const [commentary, setCommentary] = useState('');
   const [config, setConfig] = useState<AppConfig>({
     geminiModel: 'gemini-3.7-flash',
@@ -110,7 +111,6 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<string>('Listening for voice…');
   const engineRef = useRef<VoiceEngine | null>(null);
-  const pendingHitlRef = useRef<HitlQuestion | null>(null);
   const lastUtteranceRef = useRef<{ wavBase64: string; mimeType: string } | null>(null);
   const voiceActiveRef = useRef(true);
   const sendPromptRef = useRef<(input: string | ExecuteOptions) => Promise<void>>();
@@ -129,30 +129,6 @@ export default function App() {
       onUtterance: async (utterance) => {
         console.log('[Voice] Utterance captured:', utterance.durationMs, 'ms');
         lastUtteranceRef.current = { wavBase64: utterance.wavBase64, mimeType: utterance.mimeType };
-
-        // If the agent is waiting for a HITL response, transcribe for fast answer resolution
-        if (pendingHitlRef.current) {
-          showBorderGlow(true, 'Analyzing answer…', 'thinking');
-          const res = await ipc()?.invoke('voice:transcribe', {
-            audioBase64: utterance.wavBase64,
-            mimeType: utterance.mimeType,
-          }) as { success: boolean; text?: string; error?: string } | undefined;
-
-          if (res?.success && res.text) {
-            const transcript = res.text.trim().replace(/^["']|["']$/g, '').trim();
-            console.log('[Voice] Resolving HITL question with answer:', transcript);
-            await ipc()?.invoke('agent:human-response', {
-              id: pendingHitlRef.current.id,
-              taskId: pendingHitlRef.current.taskId,
-              answer: transcript,
-            });
-            setHitlQuestion(null);
-            pendingHitlRef.current = null;
-            setVoiceStatus('Listening for voice…');
-            showBorderGlow(false, '');
-            return;
-          }
-        }
 
         // Automatic voice detection -> Send directly to agents!
         setVoiceStatus('Sending to agent…');
@@ -287,12 +263,6 @@ export default function App() {
       if (st.state === 'waiting_hitl') setStatus('verifying');
     };
 
-    const onHitlQuestion = (_: unknown, data: unknown) => {
-      const q = data as HitlQuestion;
-      setHitlQuestion(q);
-      pendingHitlRef.current = q;
-    };
-
     const onCommentary = (_: unknown, data: unknown) => {
       const c = data as { text: string };
       setCommentary(c.text);
@@ -313,7 +283,6 @@ export default function App() {
     renderer.on('agent:step-update', onStep);
     renderer.on('backend:status', onBackendStatus);
     renderer.on('agent:state-change', onStateChange);
-    renderer.on('agent:hitl-question', onHitlQuestion);
     renderer.on('agent:commentary', onCommentary);
     renderer.on('agent:live-action', onLiveAction);
     renderer.on('agent:tts-speak', onTtsSpeak);
@@ -322,7 +291,6 @@ export default function App() {
       renderer.removeAllListeners('agent:step-update');
       renderer.removeAllListeners('backend:status');
       renderer.removeAllListeners('agent:state-change');
-      renderer.removeAllListeners('agent:hitl-question');
       renderer.removeAllListeners('agent:commentary');
       renderer.removeAllListeners('agent:live-action');
       renderer.removeAllListeners('agent:tts-speak');
@@ -346,28 +314,15 @@ export default function App() {
 
   const handleResume = useCallback(async (taskId: string) => {
     await ipc()?.invoke('task:resume', taskId);
-    setHitlQuestion(null);
     setExecutorState('acting');
   }, []);
 
   const handleCancel = useCallback(async (taskId: string) => {
     await ipc()?.invoke('task:cancel', taskId);
-    setHitlQuestion(null);
     setExecutorState('idle');
     setStatus('idle');
     showBorderGlow(false, '');
   }, [showBorderGlow]);
-
-  const handleHitlAnswer = useCallback(async (answer: string) => {
-    if (!hitlQuestion) return;
-    await ipc()?.invoke('agent:human-response', {
-      id: hitlQuestion.id,
-      taskId: hitlQuestion.taskId,
-      answer,
-    });
-    setHitlQuestion(null);
-    pendingHitlRef.current = null;
-  }, [hitlQuestion]);
 
   const sendPrompt = useCallback(async (input: string | ExecuteOptions) => {
     const opts: ExecuteOptions = typeof input === 'string' ? { prompt: input } : input;
@@ -393,7 +348,6 @@ export default function App() {
     ]);
     setStatus('executing');
     setExecutorState('observing');
-    setHitlQuestion(null);
     lastUtteranceRef.current = null;
     showBorderGlow(true, '⚡ Thinking & Planning…', 'thinking');
 
@@ -417,15 +371,24 @@ export default function App() {
           : m
       ));
       setStatus(response.success ? 'completed' : 'error');
-      setActiveTaskId(response.taskId || currentTaskId);
+      // Speak the agent's final answer back via TTS only if it wasn't already narrated via whiteboard
+      const hadWhiteboardTool = response.steps?.some(s => 
+        s.actionName === 'draw_whiteboard_lecture' ||
+        s.actionName === 'draw_whiteboard_step' ||
+        s.actionName === 'draw_mermaid_diagram'
+      );
 
-      // Speak the agent's final answer back via TTS with active glow animation
-      if (response.success && response.message) {
+
+      if (response.success && response.message && !hadWhiteboardTool) {
         setIsSpeaking(true);
+        engineRef.current?.setMuted(true);
         showBorderGlow(true, '🔊 Hey Jave is speaking…', 'speaking');
         await speak(response.message);
         setIsSpeaking(false);
+        await new Promise(r => setTimeout(r, 400));
+        engineRef.current?.setMuted(false);
       }
+
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[App] execute-prompt failed:', msg);
@@ -686,9 +649,10 @@ function AgentMessage({ msg }: { msg: ChatMessage }) {
               color: isError ? '#ea4335' : 'var(--text-primary)',
             }}
           >
-            {msg.text}
+            <MarkdownView content={msg.text} />
           </div>
         )}
+
       </div>
     </div>
   );

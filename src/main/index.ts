@@ -4,7 +4,16 @@ import fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import dotenv from 'dotenv';
 import WebSocket from 'ws';
-import { showScreenGlow, hideScreenGlow, destroyOverlayWindow, updateScreenGlow } from './overlayWindow';
+import {
+  showScreenGlow,
+  hideScreenGlow,
+  destroyOverlayWindow,
+  updateScreenGlow,
+  closeWhiteboard,
+  closeScreenPad,
+  closeHighlightBox
+} from './overlayWindow';
+
 import { UiaBridge } from './bridge/uiaBridge';
 import { executeBrowserTool, closeLaunchedChrome } from './bridge/browserCdp';
 import { ElementResolver } from './bridge/elementResolver';
@@ -17,32 +26,17 @@ const envPath = [
 ].find((p) => fs.existsSync(p)) || path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
+import { stopAllTts, speakTextNative } from './tts';
+
 const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
 const BACKEND_WS = process.env.PYTHON_BACKEND_WS || `${BACKEND_HTTP.replace(/^http/, 'ws')}/ws`;
 
 let mainWindow: BrowserWindow | null = null;
-let activeTtsProcess: ChildProcess | null = null;
 let wsClient: WebSocket | null = null;
 let wsReconnectTimer: NodeJS.Timeout | null = null;
 const uiaBridge = new UiaBridge();
 const elementResolver = new ElementResolver(uiaBridge);
 
-// ── TTS Process Manager ───────────────────────────────────────────────────────
-function stopAllTts() {
-  if (activeTtsProcess && activeTtsProcess.pid) {
-    console.log(`[Main] Stopping active TTS speech process (PID=${activeTtsProcess.pid})...`);
-    try {
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', String(activeTtsProcess.pid), '/f', '/t']);
-      } else {
-        activeTtsProcess.kill('SIGKILL');
-      }
-    } catch (e) {
-      console.error('[Main] Error stopping TTS process:', e);
-    }
-    activeTtsProcess = null;
-  }
-}
 
 // ── Complete Clean Exit ───────────────────────────────────────────────────────
 function cleanExit() {
@@ -125,7 +119,16 @@ function connectWebSocket() {
             actionLabel = `Searching for "${args.query || 'element'}" in Windows`;
           } else if (tool === 'uia_get_interactive_elements') {
             actionLabel = 'Scanning desktop interactive controls';
+          } else if (tool === 'draw_whiteboard_step') {
+            actionLabel = `Whiteboard: ${args.conceptTitle || 'Drawing concept'} (Step ${args.stepNumber || 1})`;
+          } else if (tool === 'draw_mermaid_diagram') {
+            actionLabel = `Whiteboard: Diagramming ${args.conceptTitle || 'concept'}`;
+          } else if (tool === 'add_whiteboard_clarification') {
+            actionLabel = `Whiteboard: Clarifying ${args.topic || 'doubt'}...`;
+          } else if (tool === 'clear_whiteboard') {
+            actionLabel = 'Whiteboard: Cleared canvas';
           } else if (tool === 'take_screenshot' || tool === 'screenshot_region') {
+
             actionLabel = 'Inspecting screen view';
           } else if (tool.startsWith('browser_')) {
             actionLabel = `Browser action: ${tool.replace('browser_', '')}`;
@@ -404,34 +407,17 @@ ipcMain.handle('gemini:list-models', async (_event, apiKey?: string) => {
 ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
   if (!text) return { success: false, error: 'No text to speak' };
   
-  stopAllTts();
-
   try {
     showScreenGlow('🔊 Hey Jave is speaking…', 'speaking');
-    const { execFile } = await import('child_process');
-    
-    // Safely encode SAPI PowerShell script in UTF-16LE Base64 for -EncodedCommand (prevents quote/character parsing bugs)
-    const script = `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 1; $synth.Speak(${JSON.stringify(text)})`;
-    const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-
-    await new Promise<void>((resolve) => {
-      activeTtsProcess = execFile(
-        'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
-        { maxBuffer: 1024 * 1024 },
-        () => {
-          activeTtsProcess = null;
-          hideScreenGlow();
-          resolve();
-        },
-      );
-    });
+    await speakTextNative(text);
+    hideScreenGlow();
     return { success: true };
   } catch (err: unknown) {
     hideScreenGlow();
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 });
+
 
 ipcMain.handle('voice:stop-speaking', () => {
   stopAllTts();
@@ -515,3 +501,20 @@ ipcMain.handle('agent:human-response', async (_event, payload: { id?: string; ta
   }
   return { success: false, message: 'Backend WebSocket is not connected' };
 });
+
+// ── Overlay Component Dismissal IPC Handlers ──────────────────────────────
+ipcMain.handle('agent:close-whiteboard', () => {
+  closeWhiteboard();
+  return { success: true };
+});
+
+ipcMain.handle('agent:close-screenpad', () => {
+  closeScreenPad();
+  return { success: true };
+});
+
+ipcMain.handle('agent:close-box', (_event, { id }: { id: string }) => {
+  closeHighlightBox(id);
+  return { success: true };
+});
+

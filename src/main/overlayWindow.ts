@@ -159,3 +159,66 @@ export function clearAllHighlightBoxes() {
   }
 }
 
+// ── Interactive Whiteboard & Explainer Overlay ───────────────────────────────
+export function showWhiteboardStep(payload: Record<string, unknown>) {
+  try {
+    const win = createOverlayWindow();
+    if (win && !win.isDestroyed()) {
+      win.showInactive();
+      // Enable mouse events so user can interact with Whiteboard toolbar (Clear/Close)
+      win.setIgnoreMouseEvents(false);
+      win.webContents.send('overlay:whiteboard-step', payload);
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to show whiteboard step:', err);
+  }
+}
+
+export function showWhiteboardDiagram(payload: Record<string, unknown>) {
+  try {
+    const win = createOverlayWindow();
+    if (win && !win.isDestroyed()) {
+      win.showInactive();
+      win.setIgnoreMouseEvents(false);
+      win.webContents.send('overlay:whiteboard-diagram', payload);
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to show whiteboard diagram:', err);
+  }
+}
+
+export function addWhiteboardClarification(payload: Record<string, unknown>) {
+  try {
+    const win = createOverlayWindow();
+    if (win && !win.isDestroyed()) {
+      win.showInactive();
+      win.setIgnoreMouseEvents(false);
+      win.webContents.send('overlay:whiteboard-clarification', payload);
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to add whiteboard clarification:', err);
+  }
+}
+
+export function clearWhiteboard() {
+  try {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('overlay:whiteboard-clear');
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to clear whiteboard:', err);
+  }
+}
+
+export function closeWhiteboard() {
+  try {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('overlay:whiteboard-close');
+      overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed to close whiteboard:', err);
+  }
+}
+
+

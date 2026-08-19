@@ -3,8 +3,18 @@ import path from 'path';
 import fs from 'fs';
 import { shell } from 'electron';
 import { UiaActionResult, WindowInfo } from '../../shared/types';
+import {
+  showWhiteboardStep,
+  showWhiteboardDiagram,
+  addWhiteboardClarification,
+  clearWhiteboard,
+  closeWhiteboard
+} from '../overlayWindow';
+import { speakTextNative, stopAllTts } from '../tts';
 
 export class UiaBridge {
+
+
   private scriptPath: string;
 
   constructor() {
@@ -376,10 +386,10 @@ export class UiaBridge {
   }
 
   /**
-   * Displays an interactive on-screen Scratchpad overlay with message and suggested commands
+   * Displays an interactive on-screen Scratchpad overlay with formatted markdown, message, and suggested commands
    */
-  public async showScratchpad(title: string, message: string, command: string): Promise<{ success: boolean; action?: string; command?: string }> {
-    return this.executeCommand<{ success: boolean; action?: string; command?: string }>('SHOW_SCRATCHPAD', { title, message, command });
+  public async showScratchpad(title: string, message: string, content: string, type = 'auto'): Promise<{ success: boolean; action?: string; command?: string }> {
+    return this.executeCommand<{ success: boolean; action?: string; command?: string }>('SHOW_SCRATCHPAD', { title, message, content, command: content, type });
   }
 
   /**
@@ -624,7 +634,8 @@ export class UiaBridge {
         return (await this.showScratchpad(
           String(args.title || 'Scratchpad'),
           String(args.message || 'Suggested content:'),
-          String(args.content || '')
+          String(args.content || args.command || ''),
+          String(args.type || 'auto')
         )) as unknown as Record<string, unknown>;
       case 'ask_human':
         return (await this.askHuman(
@@ -648,11 +659,75 @@ export class UiaBridge {
       }
       case 'speak_sync':
         return (await this.speakSync(String(args.text || ''))) as unknown as Record<string, unknown>;
+      case 'draw_whiteboard_lecture': {
+        const conceptTitle = String(args.conceptTitle || 'Concept');
+        const steps = Array.isArray(args.steps) ? (args.steps as Array<Record<string, unknown>>) : [];
+        const delaySec = typeof args.stepDelaySeconds === 'number' ? args.stepDelaySeconds : 1.0;
+
+        for (let i = 0; i < steps.length; i++) {
+          const stepData = { ...steps[i] };
+          stepData.conceptTitle = stepData.conceptTitle || conceptTitle;
+          stepData.totalSteps = stepData.totalSteps || steps.length;
+          stepData.appendMode = i > 0;
+
+          showWhiteboardStep(stepData);
+
+          const narration = String(stepData.narration || '');
+          if (narration.trim()) {
+            await speakTextNative(narration);
+          }
+
+          if (i < steps.length - 1) {
+            await new Promise((r) => setTimeout(r, Math.max(200, delaySec * 1000)));
+          }
+        }
+
+        return { success: true, message: `Completed ${steps.length}-step whiteboard lecture: ${conceptTitle}` };
+      }
+      case 'draw_whiteboard_step': {
+        showWhiteboardStep(args);
+        const narration = String(args.narration || '');
+        if (narration.trim()) {
+          await speakTextNative(narration);
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        return { success: true, message: `Rendered whiteboard step: ${args.conceptTitle || 'concept'}` };
+      }
+
+      case 'draw_mermaid_diagram': {
+        showWhiteboardDiagram(args);
+        const narration = String(args.narration || '');
+        if (narration.trim()) {
+          await speakTextNative(narration);
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        return { success: true, message: `Rendered whiteboard diagram: ${args.conceptTitle || 'diagram'}` };
+      }
+      case 'add_whiteboard_clarification': {
+        addWhiteboardClarification(args);
+        const narration = String(args.narration || '');
+        if (narration.trim()) {
+          await speakTextNative(narration);
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        return { success: true, message: `Added clarification note on whiteboard` };
+      }
+
+      case 'clear_whiteboard': {
+        clearWhiteboard();
+        return { success: true, message: `Cleared whiteboard` };
+      }
+      case 'close_whiteboard': {
+        closeWhiteboard();
+        return { success: true, message: `Closed whiteboard overlay` };
+      }
+
       default:
         throw new Error(`Unrecognized tool call in UiaBridge: ${name}`);
     }
   }
 }
+
 
 
 

@@ -36,7 +36,9 @@ export class VoiceEngine {
   private analyser: AnalyserNode | null = null;
 
   private active = false;
+  private isMuted = false;
   private state: VoiceState = 'IDLE';
+
 
   private chunks: Float32Array[] = [];
   private speechStarted = false;
@@ -111,6 +113,17 @@ export class VoiceEngine {
     this.setState('IDLE');
   }
 
+  setMuted(muted: boolean): void {
+    this.isMuted = muted;
+    if (muted) {
+      this.stopCountdown();
+      this.reset();
+      this.setState('IDLE');
+    } else if (this.active) {
+      this.setState('LISTENING');
+    }
+  }
+
   async stop(): Promise<void> {
     this.stopCountdown();
     this.stopIdleTimer();
@@ -128,8 +141,11 @@ export class VoiceEngine {
   }
 
   private handleAudio(samples: Float32Array): void {
+    if (this.isMuted) return;
+
     const rms = this.rms(samples);
     const isSpeech = rms > this.silenceThreshold;
+
 
     if (isSpeech) {
       if (this.countdownStarted) {

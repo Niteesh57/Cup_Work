@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <title>Hey Jave Screen Overlay</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       width: 100vw;
@@ -12,7 +14,7 @@
       background: transparent;
       pointer-events: none;
       user-select: none;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
     /* ── Border Glow ──────────────────────────────────────────────────────── */
@@ -25,6 +27,7 @@
       transition: opacity 0.35s ease, box-shadow 0.35s ease;
       box-shadow: inset 0 0 25px 6px rgba(66,133,244,0.85),
                   inset 0 0 50px 12px rgba(234,67,53,0.45);
+      z-index: 10;
     }
     .screen-glow.active {
       opacity: 1;
@@ -90,6 +93,7 @@
       box-shadow: 0 6px 24px rgba(0,0,0,0.6);
       opacity: 0;
       transition: opacity 0.3s ease, transform 0.3s ease;
+      z-index: 20;
     }
     .screen-glow.active .status-pill { opacity: 1; }
     .pulse-dot {
@@ -115,7 +119,7 @@
       color: #e2e8f0;
     }
 
-    /* ── Listening Ring (Wake Word Active) ───────────────────────────────── */
+    /* ── Listening Ring ─────────────────────────────────────────────────── */
     #listen-ring {
       position: absolute;
       bottom: 32px;
@@ -128,6 +132,7 @@
       display: none;
       animation: pulse-ring 1.1s ease-in-out infinite;
       pointer-events: none;
+      z-index: 15;
     }
     #listen-ring.active { display: block; }
     @keyframes pulse-ring {
@@ -141,6 +146,7 @@
       position: absolute;
       inset: 0;
       pointer-events: none;
+      z-index: 30;
     }
     .hbox {
       position: absolute;
@@ -208,6 +214,7 @@
       overflow: hidden;
       pointer-events: auto;
       animation: pad-slide-up 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 50;
     }
     #screenpad.visible { display: flex; }
     @keyframes pad-slide-up {
@@ -284,6 +291,284 @@
     }
     .sp-btn.confirm:hover { background: rgba(52,168,83,0.3); }
     .sp-btn-hidden { display: none; }
+
+    /* ═════════════════════════════════════════════════════════════════════════
+       ── INFINITE AUTO-FOCUS WHITEBOARD OVERLAY ───────────────────────────────
+       ═════════════════════════════════════════════════════════════════════════ */
+    #whiteboard-layer {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease-out;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+    }
+    #whiteboard-layer.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Minimal Top Bar */
+    .wb-topbar {
+      height: 54px;
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+      z-index: 100;
+    }
+
+    .wb-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.02em;
+    }
+
+    .wb-close-btn {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .wb-close-btn:hover {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #dc2626;
+    }
+
+    /* Two-Column Layout */
+    .wb-main-layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Left Sidebar: Step Explanation Overview */
+    .wb-sidebar {
+      width: 360px;
+      min-width: 320px;
+      max-width: 400px;
+      background: #f8fafc;
+      border-right: 1px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px;
+      gap: 12px;
+      z-index: 10;
+    }
+
+    .wb-sidebar-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    /* Step Explanation Cards */
+    .wb-step-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      transition: all 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      animation: cardFadeIn 0.3s ease-out forwards;
+    }
+    @keyframes cardFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .wb-step-card.active {
+      border: 1.5px solid #2563eb;
+      background: #f0f7ff;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+    }
+
+    .wb-step-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .wb-step-badge {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #2563eb;
+      background: #dbeafe;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .wb-step-card.active .wb-step-badge {
+      background: #2563eb;
+      color: #ffffff;
+    }
+
+    .wb-step-card-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      flex: 1;
+    }
+
+    .wb-step-card-notes {
+      font-size: 12.5px;
+      color: #334155;
+      line-height: 1.45;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .wb-step-note-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .wb-step-bullet {
+      color: #2563eb;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+
+    /* Right Infinite Canvas Stage */
+    .wb-canvas-container {
+      flex: 1;
+      position: relative;
+      background: #ffffff;
+      background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1.2px, transparent 1.2px);
+      background-size: 24px 24px;
+      overflow: hidden;
+      cursor: grab;
+    }
+    .wb-canvas-container:active {
+      cursor: grabbing;
+    }
+
+    #wb-svg-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Camera Stage Layer with Smooth GPU Acceleration */
+    #wb-camera-stage {
+      transition: transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: 0 0;
+    }
+
+    /* SVG Stroke Animations */
+    .wb-stroke-draw {
+      stroke-dasharray: 2000;
+      stroke-dashoffset: 2000;
+      animation: drawStroke 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+    @keyframes drawStroke {
+      to { stroke-dashoffset: 0; }
+    }
+
+    .wb-fade-in {
+      animation: wbFadeIn 0.35s ease-out forwards;
+    }
+    @keyframes wbFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* Typography on Canvas */
+    .wb-title-text {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      fill: #0f172a;
+      letter-spacing: -0.01em;
+    }
+
+    .wb-sub-text {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-weight: 500;
+      font-size: 11.5px;
+      fill: #475569;
+    }
+
+    /* Clarification Callout Card */
+    .wb-clarify-card {
+      position: absolute;
+      background: #ffffff;
+      border: 2px solid #9333ea;
+      border-left: 5px solid #9333ea;
+      border-radius: 8px;
+      padding: 12px 16px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      color: #0f172a;
+      max-width: 380px;
+      font-size: 12.5px;
+      animation: clarifyPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      pointer-events: auto;
+      z-index: 60;
+    }
+    @keyframes clarifyPop {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .wb-clarify-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #9333ea;
+      margin-bottom: 4px;
+    }
+    .wb-clarify-body {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 12.5px;
+      color: #1e293b;
+      line-height: 1.45;
+    }
+
+    /* Minimal Footer */
+    .wb-footer-hint {
+      position: absolute;
+      bottom: 12px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 500;
+      z-index: 100;
+      pointer-events: none;
+    }
+    .wb-kbd {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      color: #475569;
+      font-family: 'Fira Code', monospace;
+    }
   </style>
 </head>
 <body>
@@ -292,7 +577,7 @@
   <div id="glow" class="screen-glow">
     <div class="status-pill">
       <div class="pulse-dot"></div>
-      <span id="status-text" class="prompt-text">⚡ Hey Jave AI Agent Active on Windows Desktop...</span>
+      <span id="status-text" class="prompt-text">Hey Jave Active</span>
     </div>
   </div>
 
@@ -306,14 +591,81 @@
   <div id="screenpad">
     <div class="sp-header">
       <span class="sp-title">
-        📋 <span id="sp-title-text">AI Suggestion</span>
+        <span id="sp-title-text">Suggestion</span>
       </span>
-      <button class="sp-close-btn" id="sp-close" title="Close ScreenPad">✕</button>
+      <button class="sp-close-btn" id="sp-close" title="Close">✕</button>
     </div>
     <pre class="sp-content" id="sp-content"></pre>
     <div class="sp-actions">
-      <button class="sp-btn" id="sp-copy">📋 Copy</button>
-      <button class="sp-btn confirm sp-btn-hidden" id="sp-confirm">✅ Confirm &amp; Save</button>
+      <button class="sp-btn" id="sp-copy">Copy</button>
+      <button class="sp-btn confirm sp-btn-hidden" id="sp-confirm">Confirm &amp; Save</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       ── INFINITE AUTO-FOCUS WHITEBOARD OVERLAY ───────────────────────────────
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="whiteboard-layer">
+    <!-- Clean Minimal Top Bar -->
+    <div class="wb-topbar">
+      <div class="wb-title" id="wb-concept-title">Whiteboard</div>
+      <button class="wb-close-btn" id="wb-close-btn" title="Close whiteboard">Close (ESC)</button>
+    </div>
+
+    <!-- Main Layout: Sidebar Notes + Infinite SVG Canvas -->
+    <div class="wb-main-layout">
+      <!-- Left Step-by-Step Explanation Sidebar -->
+      <div class="wb-sidebar">
+        <div class="wb-sidebar-title">Step-by-Step Overview</div>
+        <div id="wb-steps-container" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+
+      <!-- Right Infinite SVG Canvas Stage -->
+      <div class="wb-canvas-container" id="wb-canvas-container">
+        <svg id="wb-svg-canvas" viewBox="-600 -350 1200 700" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Marker Arrow Heads for Clean Canvas -->
+            <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#2563eb"/>
+            </marker>
+            <marker id="arrow-emerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#059669"/>
+            </marker>
+            <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#d97706"/>
+            </marker>
+            <marker id="arrow-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#9333ea"/>
+            </marker>
+            <marker id="arrow-rose" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#e11d48"/>
+            </marker>
+            <marker id="arrow-slate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#334155"/>
+            </marker>
+
+            <filter id="shadow-node" x="-10%" y="-10%" width="120%" height="120%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.06"/>
+            </filter>
+          </defs>
+
+          <!-- Smooth Infinite Camera Stage -->
+          <g id="wb-camera-stage">
+            <g id="wb-group-connections"></g>
+            <g id="wb-group-nodes"></g>
+          </g>
+        </svg>
+
+        <!-- Clarification Cards Container -->
+        <div id="wb-clarifications-container"></div>
+      </div>
+    </div>
+
+    <!-- Minimal Footer -->
+    <div class="wb-footer-hint">
+      <span>Drag canvas to explore</span>
+      <span>•</span>
+      <span>Press <span class="wb-kbd">ESC</span> to close</span>
     </div>
   </div>
 
@@ -321,20 +673,29 @@
     const { ipcRenderer } = require('electron');
 
     // ── Helpers ──────────────────────────────────────────────────────────────
-    const glow       = document.getElementById('glow');
-    const statusText = document.getElementById('status-text');
-    const listenRing = document.getElementById('listen-ring');
-    const boxLayer   = document.getElementById('box-layer');
-    const screenpad  = document.getElementById('screenpad');
+    const glow            = document.getElementById('glow');
+    const statusText      = document.getElementById('status-text');
+    const listenRing      = document.getElementById('listen-ring');
+    const boxLayer        = document.getElementById('box-layer');
+    const screenpad       = document.getElementById('screenpad');
+
+    // Whiteboard DOM Elements
+    const wbLayer           = document.getElementById('whiteboard-layer');
+    const wbConceptTitle    = document.getElementById('wb-concept-title');
+    const wbCloseBtn        = document.getElementById('wb-close-btn');
+    const wbStepsContainer  = document.getElementById('wb-steps-container');
+    const wbCanvasContainer = document.getElementById('wb-canvas-container');
+    const wbCameraStage     = document.getElementById('wb-camera-stage');
+    const wbGroupConn       = document.getElementById('wb-group-connections');
+    const wbGroupNodes      = document.getElementById('wb-group-nodes');
+    const wbClarifyCont     = document.getElementById('wb-clarifications-container');
 
     // ── Border Glow ──────────────────────────────────────────────────────────
     ipcRenderer.on('overlay:show', (_e, data) => {
       const text = typeof data === 'string' ? data : (data?.text || '');
       const mode = typeof data === 'object' && data?.mode ? data.mode : 'thinking';
 
-      statusText.textContent = text
-        ? `⚡ Hey Jave: ${text}`
-        : `⚡ Hey Jave AI Agent Active on Windows Desktop...`;
+      statusText.textContent = text ? text : 'Hey Jave Active';
 
       glow.classList.remove('user-speaking', 'thinking', 'executing', 'speaking');
       glow.classList.add('active', mode);
@@ -348,42 +709,15 @@
       const text = typeof data === 'string' ? data : (data?.text || '');
       const mode = typeof data === 'object' ? data?.mode : undefined;
 
-      if (text) statusText.textContent = `⚡ Hey Jave: ${text}`;
+      if (text) statusText.textContent = text;
       if (mode) {
         glow.classList.remove('user-speaking', 'thinking', 'executing', 'speaking');
         glow.classList.add(mode);
       }
     });
 
-    // ── Listening Ring (Wake Word) ───────────────────────────────────────────
-    ipcRenderer.on('agent:listen-start', () => listenRing.classList.add('active'));
-    ipcRenderer.on('agent:listen-stop',  () => listenRing.classList.remove('active'));
-
-    // ── TTS via Web Speech API (Windows built-in, no Azure key needed) ───────
-    ipcRenderer.on('agent:tts-speak', (_e, data) => {
-      const text = typeof data === 'string' ? data : data?.text;
-      if (!text) return;
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate  = 0.95;
-      utterance.pitch = 1.0;
-      const setVoice = () => {
-        const voices  = speechSynthesis.getVoices();
-        const msVoice = voices.find(v =>
-          v.name.toLowerCase().includes('microsoft') &&
-          v.name.toLowerCase().includes('david')
-        );
-        utterance.voice = msVoice ?? voices.find(v => v.lang.startsWith('en')) ?? null;
-        speechSynthesis.cancel();
-        speechSynthesis.speak(utterance);
-      };
-      speechSynthesis.getVoices().length > 0
-        ? setVoice()
-        : speechSynthesis.addEventListener('voiceschanged', setVoice, { once: true });
-    });
-
     // ── Highlight Boxes ──────────────────────────────────────────────────────
     ipcRenderer.on('overlay:box-show', (_e, box) => {
-      // Remove existing box with same id
       const old = document.getElementById(`hbox_${box.id}`);
       if (old) old.remove();
 
@@ -392,16 +726,14 @@
       el.className = `hbox ${box.color || 'green'}`;
       el.style.cssText = `left:${box.x}px; top:${box.y}px; width:${box.width}px; height:${box.height}px;`;
 
-      // Label tag
       const tag = document.createElement('div');
       tag.className = 'hbox-tag';
       tag.innerHTML = `<span>${box.label || ''}</span>`;
 
-      // Close button
       const closeBtn = document.createElement('button');
       closeBtn.className = 'hbox-close';
       closeBtn.textContent = '✕';
-      closeBtn.title = 'Close this highlight';
+      closeBtn.title = 'Close';
       closeBtn.addEventListener('click', () => {
         el.remove();
         ipcRenderer.invoke('agent:close-box', { id: box.id });
@@ -426,7 +758,7 @@
     let padContent = '';
 
     ipcRenderer.on('overlay:screenpad-show', (_e, data) => {
-      document.getElementById('sp-title-text').textContent = data.title || 'AI Suggestion';
+      document.getElementById('sp-title-text').textContent = data.title || 'Suggestion';
       document.getElementById('sp-content').textContent    = data.content || '';
       padContent               = data.content || '';
       padRequiresConfirmation  = !!data.requiresConfirmation;
@@ -445,16 +777,13 @@
       screenpad.classList.remove('visible');
     });
 
-    // Close button
     document.getElementById('sp-close').addEventListener('click', () => {
       screenpad.classList.remove('visible');
       ipcRenderer.invoke('agent:close-screenpad');
     });
 
-    // Copy button
     document.getElementById('sp-copy').addEventListener('click', () => {
       navigator.clipboard.writeText(padContent).catch(() => {
-        // Fallback: select all text
         const el = document.getElementById('sp-content');
         const range = document.createRange();
         range.selectNodeContents(el);
@@ -464,16 +793,524 @@
       });
     });
 
-    // Confirm & Save button (research output)
     document.getElementById('sp-confirm').addEventListener('click', async () => {
       const result = await ipcRenderer.invoke('agent:research-confirm', {
         content:  padContent,
         filename: `research_${Date.now()}.md`
       });
       if (result?.success) {
-        statusText.textContent = `✅ Research saved to: ${result.path}`;
+        statusText.textContent = `Research saved: ${result.path}`;
         screenpad.classList.remove('visible');
         ipcRenderer.invoke('agent:close-screenpad');
+      }
+    });
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // ── INFINITE AUTO-FOCUS WHITEBOARD CAMERA SYSTEM ─────────────────────────
+    // ═════════════════════════════════════════════════════════════════════════
+    const colorMap = {
+      blue:    { stroke: '#2563eb', fill: '#f0f7ff', marker: 'url(#arrow-blue)', title: '#1e3a8a' },
+      cyan:    { stroke: '#0284c7', fill: '#f0f9ff', marker: 'url(#arrow-blue)', title: '#0c4a6e' },
+      emerald: { stroke: '#059669', fill: '#f0fdf4', marker: 'url(#arrow-emerald)', title: '#064e3b' },
+      green:   { stroke: '#059669', fill: '#f0fdf4', marker: 'url(#arrow-emerald)', title: '#064e3b' },
+      amber:   { stroke: '#d97706', fill: '#fffbeb', marker: 'url(#arrow-amber)', title: '#78350f' },
+      yellow:  { stroke: '#d97706', fill: '#fffbeb', marker: 'url(#arrow-amber)', title: '#78350f' },
+      purple:  { stroke: '#9333ea', fill: '#faf5ff', marker: 'url(#arrow-purple)', title: '#581c87' },
+      pink:    { stroke: '#e11d48', fill: '#fff1f2', marker: 'url(#arrow-rose)', title: '#881337' },
+      rose:    { stroke: '#e11d48', fill: '#fff1f2', marker: 'url(#arrow-rose)', title: '#881337' },
+      slate:   { stroke: '#334155', fill: '#f8fafc', marker: 'url(#arrow-slate)', title: '#0f172a' },
+      white:   { stroke: '#2563eb', fill: '#ffffff', marker: 'url(#arrow-blue)', title: '#1e3a8a' }
+    };
+
+    function getColorScheme(colorName) {
+      return colorMap[colorName?.toLowerCase()] || colorMap.blue;
+    }
+
+    const nodeRegistry = new Map();
+    const connectionCounts = new Map(); // tracks parallel arrows between nodes
+
+    // Camera state
+    let cameraX = 0;
+    let cameraY = 0;
+    let cameraZoom = 1;
+
+    function autoFocusOn(targetX, targetY, zoom = 1) {
+      cameraX = -targetX;
+      cameraY = -targetY;
+      cameraZoom = zoom;
+      wbCameraStage.style.transition = 'transform 0.85s cubic-bezier(0.16, 1, 0.3, 1)';
+      wbCameraStage.style.transform = `translate(${cameraX}px, ${cameraY}px) scale(${cameraZoom})`;
+    }
+
+    // Interactive mouse dragging on canvas
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let initialCamX = 0;
+    let initialCamY = 0;
+
+    wbCanvasContainer.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      initialCamX = cameraX;
+      initialCamY = cameraY;
+      wbCameraStage.style.transition = 'none';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      cameraX = initialCamX + dx;
+      cameraY = initialCamY + dy;
+      wbCameraStage.style.transform = `translate(${cameraX}px, ${cameraY}px) scale(${cameraZoom})`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        wbCameraStage.style.transition = 'transform 0.85s cubic-bezier(0.16, 1, 0.3, 1)';
+      }
+    });
+
+    // 1. Vector Path Generators
+    function makeJitterRectPath(x, y, w, h, r = 10) {
+      const j = () => (Math.random() - 0.5) * 0.8;
+      return `M ${x + r + j()} ${y + j()} 
+              H ${x + w - r + j()} 
+              Q ${x + w + j()} ${y + j()}, ${x + w + j()} ${y + r + j()} 
+              V ${y + h - r + j()} 
+              Q ${x + w + j()} ${y + h + j()}, ${x + w - r + j()} ${y + h + j()} 
+              H ${x + r + j()} 
+              Q ${x + j()} ${y + h + j()}, ${x + j()} ${y + h - r + j()} 
+              V ${y + r + j()} 
+              Q ${x + j()} ${y + j()}, ${x + r + j()} ${y + j()} Z`;
+    }
+
+    function makeCylinderPath(x, y, w, h) {
+      const topH = 16;
+      return `M ${x} ${y + topH / 2} 
+              A ${w / 2} ${topH / 2} 0 0 1 ${x + w} ${y + topH / 2} 
+              V ${y + h - topH / 2} 
+              A ${w / 2} ${topH / 2} 0 0 1 ${x} ${y + h - topH / 2} Z
+              M ${x} ${y + topH / 2} 
+              A ${w / 2} ${topH / 2} 0 0 0 ${x + w} ${y + topH / 2}`;
+    }
+
+    function makeCloudPath(x, y, w, h) {
+      const j = () => (Math.random() - 0.5) * 1.0;
+      return `M ${x + 20 + j()} ${y + h - 12}
+              C ${x + j()} ${y + h - 12}, ${x + j()} ${y + 16}, ${x + 30 + j()} ${y + 16}
+              C ${x + 30 + j()} ${y + j()}, ${x + w - 30 + j()} ${y + j()}, ${x + w - 30 + j()} ${y + 16}
+              C ${x + w + j()} ${y + 16}, ${x + w + j()} ${y + h - 12}, ${x + w - 20 + j()} ${y + h - 12}
+              Z`;
+    }
+
+    // 2. Intelligent Node Collision Resolver
+    function resolveNodeOverlap(id, x, y, width, height) {
+      let resolvedX = x;
+      let resolvedY = y;
+      const minGapX = 60;
+      const minGapY = 55;
+
+      for (const [existingId, existing] of nodeRegistry.entries()) {
+        if (existingId === id) continue;
+        const overlapX = Math.abs(existing.cx - (resolvedX + width / 2)) < (existing.width / 2 + width / 2 + minGapX);
+        const overlapY = Math.abs(existing.cy - (resolvedY + height / 2)) < (existing.height / 2 + height / 2 + minGapY);
+
+        if (overlapX && overlapY) {
+          // Push downward with generous spacing
+          resolvedY = existing.y + existing.height + minGapY + 10;
+        }
+      }
+
+      return { x: resolvedX, y: resolvedY, width, height };
+    }
+
+    // 3. Render Node
+    function renderWhiteboardNode(node) {
+      const { id, type = 'box', label = '', sublabel = '', color = 'blue' } = node;
+      const rawX = Number(node.x) || 0;
+      const rawY = Number(node.y) || 0;
+      const rawW = Number(node.width) || 200;
+      const rawH = Number(node.height) || 90;
+
+      const { x, y, width, height } = resolveNodeOverlap(id, rawX, rawY, rawW, rawH);
+      const cs = getColorScheme(color);
+
+      nodeRegistry.set(id, { x, y, width, height, cx: x + width / 2, cy: y + height / 2 });
+
+      const existing = document.getElementById(`wb_node_${id}`);
+      if (existing) existing.remove();
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.id = `wb_node_${id}`;
+      g.setAttribute('class', 'wb-fade-in');
+      g.setAttribute('filter', 'url(#shadow-node)');
+
+      let pathD = '';
+      if (type === 'cylinder') {
+        pathD = makeCylinderPath(x, y, width, height);
+      } else if (type === 'cloud') {
+        pathD = makeCloudPath(x, y, width, height);
+      } else {
+        pathD = makeJitterRectPath(x, y, width, height, 10);
+      }
+
+      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathEl.setAttribute('d', pathD);
+      pathEl.setAttribute('fill', cs.fill);
+      pathEl.setAttribute('stroke', cs.stroke);
+      pathEl.setAttribute('stroke-width', '2.2');
+      pathEl.setAttribute('stroke-linejoin', 'round');
+      pathEl.setAttribute('class', 'wb-stroke-draw');
+      g.appendChild(pathEl);
+
+      const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      textEl.setAttribute('x', String(x + width / 2));
+      textEl.setAttribute('y', String(y + height / 2 - (sublabel ? 4 : -5)));
+      textEl.setAttribute('text-anchor', 'middle');
+      textEl.setAttribute('class', 'wb-title-text');
+      textEl.textContent = label;
+      g.appendChild(textEl);
+
+      if (sublabel) {
+        const subEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        subEl.setAttribute('x', String(x + width / 2));
+        subEl.setAttribute('y', String(y + height / 2 + 16));
+        subEl.setAttribute('text-anchor', 'middle');
+        subEl.setAttribute('class', 'wb-sub-text');
+        subEl.textContent = sublabel;
+        g.appendChild(subEl);
+      }
+
+      wbGroupNodes.appendChild(g);
+    }
+
+    // 4. Render Connecting Arrows with Parallel Collision Avoidance
+    function renderWhiteboardConnection(conn) {
+      const fromNode = nodeRegistry.get(conn.from);
+      const toNode   = nodeRegistry.get(conn.to);
+      if (!fromNode || !toNode) return;
+
+      const pairKey = `${conn.from}->${conn.to}`;
+      const pairIndex = connectionCounts.get(pairKey) || 0;
+      connectionCounts.set(pairKey, pairIndex + 1);
+
+      const cs = getColorScheme(conn.color || 'blue');
+      const connId = `wb_conn_${conn.from}_${conn.to}_${pairIndex}`;
+
+      const existing = document.getElementById(connId);
+      if (existing) existing.remove();
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.id = connId;
+      g.setAttribute('class', 'wb-fade-in');
+
+      let startX = fromNode.cx;
+      let startY = fromNode.cy;
+      let endX   = toNode.cx;
+      let endY   = toNode.cy;
+
+      // Port offsets for parallel arrows
+      const portOffsetY = pairIndex === 0 ? 0 : (pairIndex % 2 === 1 ? -20 : 20);
+
+      if (Math.abs(endX - startX) > Math.abs(endY - startY)) {
+        if (endX > startX) {
+          startX = fromNode.x + fromNode.width;
+          startY = fromNode.cy + portOffsetY;
+          endX   = toNode.x - 3;
+          endY   = toNode.cy + portOffsetY;
+        } else {
+          startX = fromNode.x;
+          startY = fromNode.cy + portOffsetY;
+          endX   = toNode.x + toNode.width + 3;
+          endY   = toNode.cy + portOffsetY;
+        }
+      } else {
+        if (endY > startY) {
+          startX = fromNode.cx + portOffsetY;
+          startY = fromNode.y + fromNode.height;
+          endX   = toNode.cx + portOffsetY;
+          endY   = toNode.y - 3;
+        } else {
+          startX = fromNode.cx + portOffsetY;
+          startY = fromNode.y;
+          endX   = toNode.cx + portOffsetY;
+          endY   = toNode.y + toNode.height + 3;
+        }
+      }
+
+      const midX = (startX + endX) / 2;
+      const midY = (startY + endY) / 2;
+
+      // Dynamic Curvature: Parallel arrows get alternating curved arches
+      let curvature = conn.curvature || 0;
+      if (pairIndex > 0) {
+        curvature = (pairIndex % 2 === 1 ? -45 : 45) * Math.ceil(pairIndex / 2);
+      }
+
+      const ctrlX = midX + curvature;
+      const ctrlY = midY - Math.abs(curvature) * 0.4;
+
+      const pathD = `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+
+      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathEl.setAttribute('d', pathD);
+      pathEl.setAttribute('fill', 'none');
+      pathEl.setAttribute('stroke', cs.stroke);
+      pathEl.setAttribute('stroke-width', conn.dashed ? '1.8' : '2.2');
+      if (conn.dashed) pathEl.setAttribute('stroke-dasharray', '5 4');
+      pathEl.setAttribute('marker-end', cs.marker);
+      pathEl.setAttribute('class', 'wb-stroke-draw');
+      g.appendChild(pathEl);
+
+      if (conn.label) {
+        const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const textW = Math.max(75, conn.label.length * 7 + 22);
+
+        const pill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        pill.setAttribute('x', String(ctrlX - textW / 2));
+        pill.setAttribute('y', String(ctrlY - 12));
+        pill.setAttribute('width', String(textW));
+        pill.setAttribute('height', '24');
+        pill.setAttribute('rx', '12');
+        pill.setAttribute('fill', '#ffffff');
+        pill.setAttribute('stroke', cs.stroke);
+        pill.setAttribute('stroke-width', '1.3');
+        labelGroup.appendChild(pill);
+
+        if (conn.stepNumber) {
+          const stepCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          stepCircle.setAttribute('cx', String(ctrlX - textW / 2 + 11));
+          stepCircle.setAttribute('cy', String(ctrlY));
+          stepCircle.setAttribute('r', '7.5');
+          stepCircle.setAttribute('fill', cs.stroke);
+          labelGroup.appendChild(stepCircle);
+
+          const stepTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          stepTxt.setAttribute('x', String(ctrlX - textW / 2 + 11));
+          stepTxt.setAttribute('y', String(ctrlY + 3));
+          stepTxt.setAttribute('text-anchor', 'middle');
+          stepTxt.setAttribute('font-size', '9.5');
+          stepTxt.setAttribute('font-weight', 'bold');
+          stepTxt.setAttribute('fill', '#ffffff');
+          stepTxt.textContent = String(conn.stepNumber);
+          labelGroup.appendChild(stepTxt);
+        }
+
+        const labelTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        labelTxt.setAttribute('x', String(conn.stepNumber ? ctrlX + 6 : ctrlX));
+        labelTxt.setAttribute('y', String(ctrlY + 3.5));
+        labelTxt.setAttribute('text-anchor', 'middle');
+        labelTxt.setAttribute('font-size', '11.5');
+        labelTxt.setAttribute('font-weight', '600');
+        labelTxt.setAttribute('fill', '#0f172a');
+        labelTxt.textContent = conn.label;
+        labelGroup.appendChild(labelTxt);
+
+        g.appendChild(labelGroup);
+      }
+
+      wbGroupConn.appendChild(g);
+    }
+
+    // 5. Add or Update Step Card in Sidebar
+    function addStepCard(stepNumber, totalSteps, stepLabel, notes) {
+      document.querySelectorAll('.wb-step-card').forEach(card => card.classList.remove('active'));
+
+      const cardId = `wb-card-${stepNumber}`;
+      let card = document.getElementById(cardId);
+
+      if (!card) {
+        card = document.createElement('div');
+        card.id = cardId;
+        card.className = 'wb-step-card active';
+        wbStepsContainer.appendChild(card);
+      } else {
+        card.className = 'wb-step-card active';
+      }
+
+      const lines = Array.isArray(notes) ? notes : (notes ? String(notes).split('\n') : []);
+      const notesHtml = lines
+        .filter(l => l.trim())
+        .map(l => `
+          <div class="wb-step-note-item">
+            <span class="wb-step-bullet">•</span>
+            <span>${l.trim().replace(/^[-*•\d.]+\s*/, '')}</span>
+          </div>
+        `).join('');
+
+      card.innerHTML = `
+        <div class="wb-step-card-header">
+          <span class="wb-step-badge">Step ${stepNumber} of ${totalSteps || stepNumber}</span>
+          <span class="wb-step-card-title">${stepLabel || 'Concept Stage'}</span>
+        </div>
+        ${notesHtml ? `<div class="wb-step-card-notes">${notesHtml}</div>` : ''}
+      `;
+
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // 6. Whiteboard Step IPC Handler
+    ipcRenderer.on('overlay:whiteboard-step', (_e, data) => {
+      wbLayer.classList.add('active');
+
+      if (data.conceptTitle) {
+        wbConceptTitle.textContent = data.conceptTitle;
+      }
+
+      if (data.appendMode === false) {
+        wbGroupConn.innerHTML = '';
+        wbGroupNodes.innerHTML = '';
+        wbStepsContainer.innerHTML = '';
+        wbClarifyCont.innerHTML = '';
+        nodeRegistry.clear();
+        connectionCounts.clear();
+      }
+
+      // Add structured card to left sidebar
+      if (data.stepNumber !== undefined) {
+        addStepCard(data.stepNumber, data.totalSteps, data.stepLabel, data.notes);
+      }
+
+      // Render Nodes
+      let targetCenterX = 0;
+      let targetCenterY = 0;
+      let nodeCount = 0;
+
+      if (Array.isArray(data.elements) && data.elements.length > 0) {
+        data.elements.forEach(node => {
+          renderWhiteboardNode(node);
+          const reg = nodeRegistry.get(node.id);
+          if (reg) {
+            targetCenterX += reg.cx;
+            targetCenterY += reg.cy;
+            nodeCount++;
+          }
+        });
+      }
+
+      // Render Connections
+      if (Array.isArray(data.connections)) {
+        data.connections.forEach(conn => renderWhiteboardConnection(conn));
+      }
+
+      // Smooth Auto-Focus Camera Pan to active elements of this step!
+      if (nodeCount > 0) {
+        autoFocusOn(targetCenterX / nodeCount, targetCenterY / nodeCount);
+      }
+    });
+
+    // 7. Clarification IPC Handler
+    ipcRenderer.on('overlay:whiteboard-clarification', (_e, data) => {
+      wbLayer.classList.add('active');
+
+      const card = document.createElement('div');
+      card.className = 'wb-clarify-card';
+      card.style.right = '24px';
+      card.style.bottom = '24px';
+
+      card.innerHTML = `
+        <div class="wb-clarify-title">Clarification: ${data.topic || 'In-Context Note'}</div>
+        <div class="wb-clarify-body">${data.text || ''}</div>
+      `;
+      wbClarifyCont.appendChild(card);
+    });
+
+    // 8. Structured Diagram IPC Handler
+    ipcRenderer.on('overlay:whiteboard-diagram', (_e, data) => {
+      wbLayer.classList.add('active');
+      if (data.conceptTitle) wbConceptTitle.textContent = data.conceptTitle;
+
+      wbGroupConn.innerHTML = '';
+      wbGroupNodes.innerHTML = '';
+      wbStepsContainer.innerHTML = '';
+      wbClarifyCont.innerHTML = '';
+      nodeRegistry.clear();
+      connectionCounts.clear();
+
+      if (data.notes) {
+        addStepCard(1, 1, 'Architecture Overview', data.notes);
+      }
+
+      let targetCenterX = 0;
+      let targetCenterY = 0;
+      let nodeCount = 0;
+
+      if (Array.isArray(data.nodes)) {
+        const cols = Math.min(3, Math.max(2, Math.ceil(Math.sqrt(data.nodes.length))));
+        const startX = 0;
+        const startY = 0;
+        const spacingX = 360;
+        const spacingY = 220;
+
+        data.nodes.forEach((node, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const nodeWithCoords = {
+            ...node,
+            x: node.x !== undefined ? node.x : startX + col * spacingX,
+            y: node.y !== undefined ? node.y : startY + row * spacingY,
+            width: node.width || 200,
+            height: node.height || 90
+          };
+          renderWhiteboardNode(nodeWithCoords);
+          const reg = nodeRegistry.get(nodeWithCoords.id);
+          if (reg) {
+            targetCenterX += reg.cx;
+            targetCenterY += reg.cy;
+            nodeCount++;
+          }
+        });
+      }
+
+      if (Array.isArray(data.connections)) {
+        data.connections.forEach(conn => renderWhiteboardConnection(conn));
+      }
+
+      if (nodeCount > 0) {
+        autoFocusOn(targetCenterX / nodeCount, targetCenterY / nodeCount);
+      }
+    });
+
+    // 9. Whiteboard Controls & ESC Handler
+    function closeWhiteboard() {
+      wbLayer.classList.remove('active');
+      wbGroupConn.innerHTML = '';
+      wbGroupNodes.innerHTML = '';
+      wbStepsContainer.innerHTML = '';
+      wbClarifyCont.innerHTML = '';
+      nodeRegistry.clear();
+      connectionCounts.clear();
+      ipcRenderer.invoke('agent:close-whiteboard');
+    }
+
+    function clearWhiteboard() {
+      wbGroupConn.innerHTML = '';
+      wbGroupNodes.innerHTML = '';
+      wbStepsContainer.innerHTML = '';
+      wbClarifyCont.innerHTML = '';
+      nodeRegistry.clear();
+      connectionCounts.clear();
+    }
+
+    wbCloseBtn.addEventListener('click', closeWhiteboard);
+
+    ipcRenderer.on('overlay:whiteboard-clear', clearWhiteboard);
+    ipcRenderer.on('overlay:whiteboard-close', closeWhiteboard);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (wbLayer.classList.contains('active')) {
+          closeWhiteboard();
+        }
+        if (screenpad.classList.contains('visible')) {
+          screenpad.classList.remove('visible');
+          ipcRenderer.invoke('agent:close-screenpad');
+        }
+        boxLayer.innerHTML = '';
       }
     });
   </script>

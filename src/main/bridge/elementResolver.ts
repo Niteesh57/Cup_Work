@@ -263,10 +263,11 @@ export class ElementResolver {
           const cx = Number(bounds.centerX || (Number(bounds.x) + Math.floor(Number(bounds.width || 0) / 2)));
           const cy = Number(bounds.centerY || (Number(bounds.y) + Math.floor(Number(bounds.height || 0) / 2)));
           if (cx > 0 && cy > 0) {
-            result = await this.uia.mouseClick(cx, cy, 'left');
+            result = (await this.uia.mouseClick(cx, cy, 'left')) as unknown as Json;
           } else {
             result = invokeRes;
           }
+
         }
       } else {
         const tool = action === 'type' ? 'uia_set_value'
