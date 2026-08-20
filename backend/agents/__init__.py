@@ -1,5 +1,6 @@
 from backend.agents.root_agent import root_agent
 from backend.agents.main_executor import main_executor_agent, main_executor_adk_agent, executor_manager
+from backend.agents.general_agent import general_agent
 from backend.agents.strange_planner import strange_planner
 from backend.agents.research_agent import research_agent
 from backend.agents.scratchpad_agent import scratchpad_agent
@@ -11,6 +12,7 @@ from backend.agents.voice_transcriber import voice_transcriber
 
 __all__ = [
     "root_agent",
+    "general_agent",
     "main_executor_agent",
     "main_executor_adk_agent",
     "executor_manager",
@@ -24,4 +26,5 @@ __all__ = [
     "hitl_manager",
     "voice_transcriber",
 ]
+
 

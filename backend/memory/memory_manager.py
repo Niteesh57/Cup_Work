@@ -163,6 +163,7 @@ class MemoryManager:
         duration_ms: int = 0,
         output_tokens: Optional[Dict[str, Any]] = None,
         hitl: Optional[Dict[str, Any]] = None,
+        whiteboard_data: Optional[Dict[str, Any]] = None,
         spoke_voice: bool = False,
         had_whiteboard: bool = False,
         date_str: Optional[str] = None,
@@ -180,11 +181,13 @@ class MemoryManager:
             duration_ms=duration_ms,
             output_tokens=output_tokens,
             hitl=hitl,
+            whiteboard_data=whiteboard_data,
             spoke_voice=spoke_voice,
             had_whiteboard=had_whiteboard,
             date_str=date_str,
             created_at=created_at,
         )
+
 
     def get_today_chat_messages(
         self,
@@ -201,6 +204,15 @@ class MemoryManager:
         date_str: Optional[str] = None,
     ) -> None:
         self.store.clear_today_chat_messages(user_id=user_id, device_id=device_id, date_str=date_str)
+
+    def start_new_coffee_cup(
+        self,
+        user_id: str,
+        device_id: Optional[str] = None,
+        date_str: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.store.start_new_coffee_cup(user_id=user_id, device_id=device_id, date_str=date_str)
+
 
 
     # ── User Preferences & Likings (Temporal 'present' vs 'expired') ──────────

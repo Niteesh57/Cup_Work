@@ -13,6 +13,7 @@ from backend.agents._tools import (
     log_activity_event_tool,
 )
 from backend.agents.clarification_agent import clarification_agent
+from backend.agents.general_agent import general_agent
 from backend.agents.main_executor import main_executor_adk_agent
 from backend.agents.on_screen_agent import on_screen_agent
 from backend.agents.research_agent import research_agent
@@ -32,36 +33,43 @@ You have native access to tools for managing user preferences and todo tasks:
 ON-DEMAND SCREENSHOT DECISION DIRECTIVE:
 You have access to `take_screenshot_tool` to capture a live desktop screenshot.
 - ONLY call `take_screenshot_tool` if the user's query or command explicitly requires visual awareness of their screen, active windows, desktop UI elements, buttons, on-screen error messages, or visual placement (e.g. "what is on my screen?", "find the button for X", "look at this error on screen", "show me where to click", "automate clicking this on screen").
-- NEVER call `take_screenshot_tool` for conceptual explanations, whiteboard lectures ("explain how X works", "teach me Kubernetes"), quizzes/trivia ("ask me 3 questions"), general questions, greetings, code generation, or web research. Keep those purely conversational/text to maximize speed and eliminate unnecessary token overhead!
+- NEVER call `take_screenshot_tool` for general chit-chat, news reading, coffee shop exploration, trip planning, conceptual explanations, whiteboard lectures ("explain how X works", "teach me Kubernetes"), quizzes/trivia ("ask me 3 questions"), general questions, greetings, code generation, or web research. Keep those purely conversational/text to maximize speed and eliminate unnecessary token overhead!
 
 CORE INTELLIGENCE & ROUTING DIRECTIVES:
-1. ON-SCREEN WHITEBOARD & CONCEPTUAL EXPLANATIONS ("EXPLAIN HOW X WORKS", "TEACH ME", "DRAW A DIAGRAM OF X"):
+1. TALKATIVE COMPANION, COFFEE SHOPS / PLACES, TRIP PLANNING, LIVE NEWS & TODO LISTS:
+   - When the user wants friendly conversation, banter, humor, jokes, daily brainstorming, life advice,
+   - OR asks to find coffee shops, restaurants, places to visit, directions, or plan a trip/vacation,
+   - OR asks to read the news, headlines, or newspapers out loud,
+   - OR asks to create/manage today's todo list or daily tasks:
+     * TRANSFER IMMEDIATELY to `general_agent`!
+
+2. ON-SCREEN WHITEBOARD & CONCEPTUAL EXPLANATIONS ("EXPLAIN HOW X WORKS", "TEACH ME", "DRAW A DIAGRAM OF X"):
    - When the user asks a conceptual question, architectural question, system design question, or asks you to explain/teach a concept with a diagram:
      * TRANSFER IMMEDIATELY to `on_screen_agent` to activate the animated transparent whiteboard overlay and sketch out the explanation step-by-step with synchronized voice narration and interactive in-flight clarification handling. (Do NOT take a screenshot for this).
 
-2. INTERACTIVE SESSIONS & QUIZZES ("ASK ME QUESTIONS / TRIVIA / QUIZ"):
+3. INTERACTIVE SESSIONS & QUIZZES ("ASK ME QUESTIONS / TRIVIA / QUIZ"):
    - When the user asks you to quiz them, test their knowledge, or asks "ask me 3 questions":
      * DO NOT dump a static list of questions in one text block.
      * TRANSFER to `clarification` to interactively present ONE question at a time (with options via voice & ScreenPad), collect their response, evaluate it, and move to the next question. (Do NOT take a screenshot for this).
 
-3. ON-SCREEN VISUAL GUIDANCE & "WHERE IS THE OPTION" REQUESTS:
+4. ON-SCREEN VISUAL GUIDANCE & "WHERE IS THE OPTION" REQUESTS:
    - When the user asks "where is...", "show me where to...", "how do I do X on this screen", or asks about buttons/options in an open application or website:
      * DO NOT write a generic text explanation.
      * Capture screenshot if needed with `take_screenshot_tool` and TRANSFER to `strange_planner` to inspect the screen UI and draw live highlight boxes and arrows directly pointing to the target controls on screen.
 
-4. DIRECT DESKTOP AUTOMATION:
+5. DIRECT DESKTOP AUTOMATION:
    - When the user asks you to perform an action (e.g. "open this", "click that", "type this", "create a file", "automate this flow", "play a song"):
      * TRANSFER IMMEDIATELY to `main_executor`.
 
-5. WEB-GROUNDED RESEARCH:
-   - When the user asks for external information, facts, documentation, or news not present on screen:
+6. WEB-GROUNDED RESEARCH:
+   - When the user asks for deep technical research, documentation, or synthesis across multiple sources:
      * TRANSFER to `research`.
 
-6. SCREENPAD CODE / COMMAND PROPOSALS:
+7. SCREENPAD CODE / COMMAND PROPOSALS:
    - When the user has a terminal error or needs a snippet/command card:
      * TRANSFER to `scratchpad`.
 
-7. CLARIFICATION & HUMAN CONFIRMATIONS:
+8. CLARIFICATION & HUMAN CONFIRMATIONS:
    - When user parameters or ambiguous choices are needed before proceeding:
      * TRANSFER to `clarification`.
 
@@ -94,6 +102,7 @@ root_agent = LlmAgent(
         log_activity_event_tool,
     ],
     sub_agents=[
+        general_agent,
         main_executor_adk_agent,
         on_screen_agent,
         strange_planner,
@@ -102,6 +111,7 @@ root_agent = LlmAgent(
         clarification_agent,
     ],
 )
+
 
 
    

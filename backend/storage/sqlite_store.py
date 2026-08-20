@@ -130,10 +130,12 @@ class SqliteStore:
                     duration_ms INTEGER DEFAULT 0,
                     tokens_json TEXT,
                     hitl_json TEXT,
+                    whiteboard_json TEXT,
                     spoke_voice INTEGER DEFAULT 0,
                     had_whiteboard INTEGER DEFAULT 0,
                     created_at INTEGER NOT NULL
                 );
+
 
                 -- Legacy Compatibility Tables
                 CREATE TABLE IF NOT EXISTS checkpoints (
@@ -229,7 +231,18 @@ class SqliteStore:
                 CREATE INDEX IF NOT EXISTS idx_hitl_status ON hitl_queue(status);
                 CREATE INDEX IF NOT EXISTS idx_dcm_user_date ON daily_chat_messages(user_id, device_id, date_str, created_at);
             """)
+
+            # Safe migration: ensure whiteboard_json column exists
+            try:
+                cur = conn.execute("PRAGMA table_info(daily_chat_messages)")
+                cols = [r["name"] for r in cur.fetchall()]
+                if "whiteboard_json" not in cols:
+                    conn.execute("ALTER TABLE daily_chat_messages ADD COLUMN whiteboard_json TEXT")
+            except Exception:
+                pass
+
             conn.commit()
+
 
 
     # ── User & Device Management & Auto-Provisioning ──────────────────────────
@@ -512,6 +525,7 @@ class SqliteStore:
         duration_ms: int = 0,
         output_tokens: Optional[Dict[str, Any]] = None,
         hitl: Optional[Dict[str, Any]] = None,
+        whiteboard_data: Optional[Dict[str, Any]] = None,
         spoke_voice: bool = False,
         had_whiteboard: bool = False,
         date_str: Optional[str] = None,
@@ -524,13 +538,14 @@ class SqliteStore:
         steps_json = json.dumps(steps) if steps else None
         tokens_json = json.dumps(output_tokens) if output_tokens else None
         hitl_json = json.dumps(hitl) if hitl else None
+        whiteboard_json = json.dumps(whiteboard_data) if whiteboard_data else None
 
         with self._get_connection() as conn:
             conn.execute(
                 "INSERT INTO daily_chat_messages ("
                 "  id, user_id, device_id, date_str, role, text, is_voice, status, "
-                "  steps_json, duration_ms, tokens_json, hitl_json, spoke_voice, had_whiteboard, created_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "  steps_json, duration_ms, tokens_json, hitl_json, whiteboard_json, spoke_voice, had_whiteboard, created_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET "
                 "  text = excluded.text, "
                 "  status = excluded.status, "
@@ -538,6 +553,7 @@ class SqliteStore:
                 "  duration_ms = excluded.duration_ms, "
                 "  tokens_json = excluded.tokens_json, "
                 "  hitl_json = excluded.hitl_json, "
+                "  whiteboard_json = excluded.whiteboard_json, "
                 "  spoke_voice = excluded.spoke_voice, "
                 "  had_whiteboard = excluded.had_whiteboard",
                 (
@@ -553,8 +569,9 @@ class SqliteStore:
                     duration_ms,
                     tokens_json,
                     hitl_json,
+                    whiteboard_json,
                     1 if spoke_voice else 0,
-                    1 if had_whiteboard else 0,
+                    1 if (had_whiteboard or bool(whiteboard_data)) else 0,
                     now,
                 ),
             )
@@ -606,6 +623,13 @@ class SqliteStore:
                 except Exception:
                     hitl = None
 
+            whiteboard_data = None
+            if row_dict.get("whiteboard_json"):
+                try:
+                    whiteboard_data = json.loads(row_dict["whiteboard_json"])
+                except Exception:
+                    whiteboard_data = None
+
             messages.append({
                 "id": row_dict["id"],
                 "role": row_dict["role"],
@@ -616,11 +640,13 @@ class SqliteStore:
                 "durationMs": row_dict.get("duration_ms") or 0,
                 "outputTokens": tokens,
                 "hitl": hitl,
+                "whiteboardData": whiteboard_data,
                 "spokeVoice": bool(row_dict.get("spoke_voice")),
-                "hadWhiteboard": bool(row_dict.get("had_whiteboard")),
+                "hadWhiteboard": bool(row_dict.get("had_whiteboard")) or bool(whiteboard_data),
                 "createdAt": row_dict.get("created_at"),
             })
         return messages
+
 
     def clear_today_chat_messages(self, user_id: str, device_id: Optional[str] = None, date_str: Optional[str] = None):
         dt_str = date_str or time.strftime("%Y-%m-%d")
@@ -636,6 +662,28 @@ class SqliteStore:
                     (user_id, dt_str),
                 )
             conn.commit()
+
+    def start_new_coffee_cup(self, user_id: str, device_id: Optional[str] = None, date_str: Optional[str] = None) -> Dict[str, Any]:
+        """Clears today's chat messages, short-term memory turns, and active todos for this user."""
+        dt_str = date_str or time.strftime("%Y-%m-%d")
+        with self._get_connection() as conn:
+            # 1. Clear today's daily chat messages
+            if device_id and device_id != "all":
+                conn.execute("DELETE FROM daily_chat_messages WHERE user_id = ? AND device_id = ? AND date_str = ?", (user_id, device_id, dt_str))
+                conn.execute("DELETE FROM short_term_memory WHERE user_id = ? AND device_id = ?", (user_id, device_id))
+            else:
+                conn.execute("DELETE FROM daily_chat_messages WHERE user_id = ? AND date_str = ?", (user_id, dt_str))
+                conn.execute("DELETE FROM short_term_memory WHERE user_id = ?", (user_id,))
+
+            # 2. Clear short_memory legacy table
+            conn.execute("DELETE FROM short_memory WHERE user_id = ?", (user_id,))
+
+            # 3. Clear today's todo tasks
+            conn.execute("DELETE FROM todo_tasks WHERE user_id = ?", (user_id,))
+
+            conn.commit()
+        return {"success": True, "message": "New coffee cup started. Today's chat, todos, and short-term memory cleared."}
+
 
     # ── Long-Term Memory (All Activity Archive across Devices/Dates) ───────────
 

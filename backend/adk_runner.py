@@ -31,6 +31,8 @@ class AdkRunner:
         # resolution (it also sets GOOGLE_GENAI_USE_VERTEXAI etc.).
         get_genai_client()
 
+        import asyncio
+        self._user_locks: dict[str, asyncio.Lock] = {}
         self._session_service = InMemorySessionService()
         self._app = App(
             name="hey-jave",
@@ -44,6 +46,39 @@ class AdkRunner:
         )
 
     async def run(
+        self,
+        prompt: Optional[str] = None,
+        audio_base64: Optional[str] = None,
+        mime_type: Optional[str] = "audio/wav",
+        user_id: str = "default",
+        device_id: str = "desktop-main",
+        task_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        import asyncio
+        if user_id not in self._user_locks:
+            self._user_locks[user_id] = asyncio.Lock()
+
+        user_lock = self._user_locks[user_id]
+        if user_lock.locked():
+            logger.warning(f"[AdkRunner] Rejecting concurrent request for user {user_id}: another task is running")
+            return {
+                "success": False,
+                "message": "Another task is already in progress. Please wait for it to complete or click Stop.",
+                "taskId": task_id or "task-busy",
+                "steps": [],
+            }
+
+        async with user_lock:
+            return await self._run_internal(
+                prompt=prompt,
+                audio_base64=audio_base64,
+                mime_type=mime_type,
+                user_id=user_id,
+                device_id=device_id,
+                task_id=task_id,
+            )
+
+    async def _run_internal(
         self,
         prompt: Optional[str] = None,
         audio_base64: Optional[str] = None,
@@ -99,6 +134,8 @@ class AdkRunner:
         final_text = ""
         agent_texts: list[str] = []
         events = []
+        executed_steps: list[dict[str, Any]] = []
+        whiteboard_data: Optional[dict[str, Any]] = None
 
         # Notify frontend of task start
         await electron_bridge.broadcast({
@@ -120,6 +157,7 @@ class AdkRunner:
                         "success": False,
                         "message": "Task cancelled by user.",
                         "taskId": session_id,
+                        "steps": executed_steps,
                         "events": events,
                     }
 
@@ -128,6 +166,7 @@ class AdkRunner:
                         "success": False,
                         "message": "Task cancelled by user.",
                         "taskId": session_id,
+                        "steps": executed_steps,
                         "events": events,
                     }
 
@@ -153,15 +192,20 @@ class AdkRunner:
                                     else:
                                         clean_args[k] = v
 
+                                if fc.name in ("draw_whiteboard_lecture", "draw_whiteboard_step", "draw_whiteboard_lecture_tool", "draw_whiteboard_step_tool", "draw_mermaid_diagram"):
+                                    whiteboard_data = raw_args
+
                                 step_dict = {
                                     "id": f"step-{uuid.uuid4().hex[:6]}",
                                     "agentName": author,
                                     "actionName": fc.name,
                                     "thought": thought_text or f"Active agent {author} invoking {fc.name}",
                                     "parameters": clean_args,
+                                    "args": raw_args,
                                     "timestamp": time.strftime("%H:%M:%S"),
                                     "success": True,
                                 }
+                                executed_steps.append(step_dict)
                                 await electron_bridge.broadcast({
                                     "type": "AGENT_STEP_UPDATE",
                                     "taskId": session_id,
@@ -200,10 +244,14 @@ class AdkRunner:
                 "success": True,
                 "message": final_msg,
                 "taskId": session_id,
+                "steps": executed_steps,
+                "whiteboardData": whiteboard_data,
+                "hadWhiteboard": bool(whiteboard_data),
                 "events": events,
             }
         finally:
             executor_manager.remove(session_id)
+
 
 
 adk_runner = AdkRunner()

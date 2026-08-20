@@ -391,8 +391,12 @@ body {
   box-shadow: var(--shadow-xs);
 }
 .msg-avatar.user {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
-  color: var(--text-inverse);
+  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab, #9b5de5, #f15bb5, #fee440, #00bbf9);
+  background-size: 400% 400%;
+  animation: auroraGradientShift 8s ease infinite;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 12px rgba(231, 60, 126, 0.35);
 }
 .msg-avatar.agent {
   background: var(--bg-elevated);
@@ -1408,5 +1412,66 @@ body {
   to {
     stroke-dashoffset: -76;
   }
+}
+
+/* ── Dynamic Moving Random Colors Avatar Animations ───────────── */
+@keyframes auroraGradientShift {
+  0% {
+    background-position: 0% 50%;
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    background-position: 100% 50%;
+    filter: hue-rotate(180deg);
+  }
+  100% {
+    background-position: 0% 50%;
+    filter: hue-rotate(360deg);
+  }
+}
+
+@keyframes spinMesh {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.18);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+.animated-aurora-bg {
+  background: linear-gradient(
+    -45deg,
+    #ee7752,
+    #e73c7e,
+    #9b5de5,
+    #23a6d5,
+    #23d5ab,
+    #00f5d4,
+    #f15bb5,
+    #fee440,
+    #00bbf9,
+    #ff007a
+  );
+  background-size: 400% 400%;
+  animation: auroraGradientShift 8s ease-in-out infinite;
+}
+
+.animated-mesh-rotate {
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    #ff007a,
+    #7928ca,
+    #0070f3,
+    #00dfd8,
+    #7928ca,
+    #fee440,
+    #ff007a
+  );
+  animation: spinMesh 10s linear infinite;
+  filter: blur(12px);
 }
 

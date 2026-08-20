@@ -4,8 +4,9 @@ import {
   Bot, Loader2, Zap, Monitor, Type, Keyboard,
   Presentation, Clock, Terminal, ShieldAlert, Pause, Brain,
   ChevronDown, ChevronUp, Layers, HelpCircle, FileCode, Search,
-  Eye, Volume2
+  Eye, Volume2, Sparkles
 } from 'lucide-react';
+
 
 interface ToolCallTimelineProps {
   steps?: AgentStep[];
@@ -76,9 +77,23 @@ const AGENT_PROFILES: Record<string, AgentMeta> = {
     stepColorClass: 'step-info',
     icon: <Search size={12} />,
   },
+  general_agent: {
+    name: 'general_agent',
+    label: 'Friendly Companion',
+    badgeClass: 'badge-neutral text-white',
+    stepColorClass: 'step-neutral',
+    icon: <Sparkles size={12} />,
+  },
+  general: {
+    name: 'general',
+    label: 'Friendly Companion',
+    badgeClass: 'badge-neutral text-white',
+    stepColorClass: 'step-neutral',
+    icon: <Sparkles size={12} />,
+  },
   scratchpad: {
     name: 'scratchpad',
-    label: 'ScreenPad Agent',
+    label: 'Code & Commands',
     badgeClass: 'badge-neutral text-white',
     stepColorClass: 'step-neutral',
     icon: <FileCode size={12} />,
@@ -125,6 +140,12 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
   ask_human:            <HelpCircle size={13} />,
   smart_ui_action:      <Zap size={13} />,
   uia_invoke:           <Zap size={13} />,
+  search_and_explore_places: <Search size={13} />,
+  read_grounded_news:   <Search size={13} />,
+  create_todo_task:     <Zap size={13} />,
+  update_todo_task:     <Zap size={13} />,
+  list_todo_tasks:      <Layers size={13} />,
+  set_user_preference:  <Bot size={13} />,
 };
 
 function formatStepLabel(actionName?: string, agentName?: string): string {

@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import logging
+import os
 from typing import Any, List, Optional
 
+from google import genai
 from google.adk.tools import ToolContext
 from google.genai import types
 
 from backend.bridge.electron_bridge import electron_bridge
 from backend.agents.hitl_manager import hitl_manager
 from backend.memory.memory_manager import memory_manager
+from backend.events.event_bus import EventType, event_bus
+from backend.config import config
+
+logger = logging.getLogger("hey_jave.tools")
 
 
 def _tool_ids(tool_context: Optional[ToolContext]) -> tuple[str, str]:
@@ -399,6 +407,22 @@ async def create_todo_task_tool(
         tags=tags,
         device_id=dev_id
     )
+
+    # Publish real-time TODO_UPDATED event for UI top bar sync
+    all_todos = memory_manager.get_all_todos(user_id=user_id)
+    pending = [t for t in all_todos if t.get("status") != "completed"]
+    done = [t for t in all_todos if t.get("status") == "completed"]
+    asyncio.create_task(event_bus.publish(EventType.TODO_UPDATED, {
+        "userId": user_id,
+        "deviceId": dev_id,
+        "counts": {
+            "total": len(all_todos),
+            "pending": len(pending),
+            "done": len(done),
+        },
+        "tasks": all_todos,
+    }))
+
     return {
         "success": True,
         "message": f"Created todo task '{title}' [Priority: {task['priority']}].",
@@ -416,6 +440,7 @@ async def update_todo_task_tool(
 ) -> dict[str, Any]:
     """Updates an existing todo task's status, priority, or details."""
     _, user_id = _tool_ids(tool_context)
+    dev_id = getattr(tool_context, "state", {}).get("device_id", "desktop-main") if tool_context else "desktop-main"
     updated = memory_manager.update_todo(
         task_id=task_id,
         user_id=user_id,
@@ -425,6 +450,21 @@ async def update_todo_task_tool(
         description=description
     )
     if updated:
+        # Publish real-time TODO_UPDATED event for UI top bar sync
+        all_todos = memory_manager.get_all_todos(user_id=user_id)
+        pending = [t for t in all_todos if t.get("status") != "completed"]
+        done = [t for t in all_todos if t.get("status") == "completed"]
+        asyncio.create_task(event_bus.publish(EventType.TODO_UPDATED, {
+            "userId": user_id,
+            "deviceId": dev_id,
+            "counts": {
+                "total": len(all_todos),
+                "pending": len(pending),
+                "done": len(done),
+            },
+            "tasks": all_todos,
+        }))
+
         return {
             "success": True,
             "message": f"Updated task '{task_id}' (Status: {updated['status']}).",
@@ -477,6 +517,90 @@ async def log_activity_event_tool(
         "message": f"Logged activity '{title}' to Long-Term Memory timeline.",
         "activityId": act_id
     }
+
+
+async def search_and_explore_places_tool(
+    query: str,
+    location_hint: Optional[str] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Finds top-rated local places, coffee shops, restaurants, attractions, directions, or travel stays and vacation plans using Google Search and Google Maps grounding."""
+    try:
+        use_vertex = config.USE_VERTEXAI
+        project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT") or "jave-505605"
+        location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+        if use_vertex:
+            client = genai.Client(vertexai=True, project=project, location=location)
+        else:
+            client = genai.Client(api_key=config.GEMINI_API_KEY)
+
+        full_query = query
+        if location_hint:
+            full_query = f"{query} in or near {location_hint}"
+
+        tools = [types.Tool(google_search=types.GoogleSearch())]
+        try:
+            if hasattr(types, "GoogleMaps"):
+                tools.append(types.Tool(google_maps=types.GoogleMaps()))
+        except Exception:
+            pass
+
+        resp = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=f"Provide a comprehensive, structured recommendation with names, exact addresses, ratings, key highlights, and helpful advice for: {full_query}",
+            config=types.GenerateContentConfig(
+                tools=tools
+            )
+        )
+        return {
+            "success": True,
+            "query": full_query,
+            "result": resp.text,
+        }
+    except Exception as e:
+        logger.warning(f"Error in search_and_explore_places_tool: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+async def read_grounded_news_tool(
+    topic: str = "top world and technology headlines today",
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Searches live news headlines, articles, and current affairs using Google Search grounding for reading aloud or summarizing."""
+    try:
+        use_vertex = config.USE_VERTEXAI
+        project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT") or "jave-505605"
+        location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+        if use_vertex:
+            client = genai.Client(vertexai=True, project=project, location=location)
+        else:
+            client = genai.Client(api_key=config.GEMINI_API_KEY)
+
+        tools = [types.Tool(google_search=types.GoogleSearch())]
+        resp = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=f"Find the most recent, breaking news headlines and key bullet point summaries for: {topic}. Include reputable sources.",
+            config=types.GenerateContentConfig(
+                tools=tools
+            )
+        )
+        return {
+            "success": True,
+            "topic": topic,
+            "news": resp.text,
+        }
+    except Exception as e:
+        logger.warning(f"Error in read_grounded_news_tool: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
 
 
 

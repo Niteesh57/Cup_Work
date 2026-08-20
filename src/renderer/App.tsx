@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentStatus, AgentStep, AppConfig, ExecutionResponse, ExecutorState } from '../shared/types';
 import { VoiceEngine } from './voiceEngine';
-import { Loader2, Mic, MicOff, X, Pause, Play, Square, Settings } from 'lucide-react';
+import { Loader2, Mic, MicOff, X, Pause, Play, Square, Presentation, Coffee, ListTodo } from 'lucide-react';
 import { CommentaryBanner } from './components/CommentaryBanner';
 import { MarkdownView } from './components/MarkdownView';
 import { ToolCallTimeline } from './components/ToolCallTimeline';
 import { CoffeeCup } from './components/CoffeeCup';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsPage } from './components/SettingsModal';
 import { DeviceRegistrationScreen } from './components/DeviceRegistrationScreen';
+import { TodoListModal, TodoTask, TodoCounts } from './components/TodoListModal';
+import { MovingColorsAvatar } from './components/MovingColorsAvatar';
+
 import appIcon from './assets/icon.png';
 
 
@@ -51,7 +54,9 @@ interface ChatMessage {
   status?: 'thinking' | 'done' | 'error';
   spokeVoice?: boolean;
   hadWhiteboard?: boolean;
+  whiteboardData?: Record<string, unknown>;
   durationMs?: number;
+
   outputTokens?: {
     prompt?: number;
     completion?: number;
@@ -84,10 +89,15 @@ export default function App() {
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [commentary, setCommentary] = useState('');
   const [backendConnected, setBackendConnected] = useState<boolean>(false);
+  const [currentVoice, setCurrentVoice] = useState<string>('Kore');
+  const [todoCounts, setTodoCounts] = useState<TodoCounts>({ total: 0, pending: 0, done: 0 });
+  const [todoTasks, setTodoTasks] = useState<TodoTask[]>([]);
+  const [showTodoModal, setShowTodoModal] = useState(false);
   const [config, setConfig] = useState<AppConfig>({
     geminiModel: '',
     backendConnected: false,
   });
+
   const [showSettings, setShowSettings] = useState(false);
   const [isDeviceRegistered, setIsDeviceRegistered] = useState<boolean | null>(null);
   const [suggestedUserName, setSuggestedUserName] = useState<string>('');
@@ -230,9 +240,121 @@ export default function App() {
     }
   }, [userIdentity.userId]);
 
+  const handleUpdateVoice = useCallback(async (newVoice: string): Promise<boolean> => {
+    try {
+      setCurrentVoice(newVoice);
+      await ipc()?.invoke('config:save', { geminiVoice: newVoice });
+      return true;
+    } catch (err) {
+      console.error('[App] Failed to save voice:', err);
+      return false;
+    }
+  }, []);
+
+  const handlePreviewVoice = useCallback((voice: string) => {
+    void speak(`Hello! This is the ${voice} voice talent for Cup Work.`, voice);
+  }, []);
+
+  const handleStartNewCup = useCallback(async () => {
+    try {
+      const targetUserId = userIdentity.userId || 'usr_local';
+      const targetDeviceId = userIdentity.deviceId || 'desktop-main';
+      await ipc()?.invoke('session:start-new-cup', {
+        userId: targetUserId,
+        deviceId: targetDeviceId,
+      });
+      setMessages([]);
+      setStatus('idle');
+      setExecutorState('idle');
+      console.log('[App] Started a fresh cup of coffee! Today’s session cleared.');
+    } catch (err) {
+      console.error('[App] Failed to start new cup:', err);
+    }
+  }, [userIdentity.userId, userIdentity.deviceId]);
+
+  /* ── Today's Tasks & Todos Fetching ─────────────────────────────── */
+  const fetchTodayTodos = useCallback(async (userId?: string, deviceId?: string) => {
+    try {
+      const targetUserId = userId || userIdentity.userId || 'usr_local';
+      const targetDeviceId = deviceId || userIdentity.deviceId || 'desktop-main';
+      const res = (await ipc()?.invoke('todos:get-today', {
+        userId: targetUserId,
+        deviceId: targetDeviceId,
+      })) as { success: boolean; counts: TodoCounts; tasks: TodoTask[] } | undefined;
+
+      if (res && res.success) {
+        setTodoCounts(res.counts || { total: 0, pending: 0, done: 0 });
+        setTodoTasks(res.tasks || []);
+      }
+    } catch (err) {
+      console.error('[App] Failed to fetch today todos:', err);
+    }
+  }, [userIdentity.userId, userIdentity.deviceId]);
+
+  const handleToggleTodo = useCallback(async (taskId: string, currentStatus: string) => {
+    try {
+      const targetStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+      setTodoTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: targetStatus } : t)));
+      setTodoCounts(prev => {
+        const isNowDone = targetStatus === 'completed';
+        return {
+          total: prev.total,
+          pending: Math.max(0, prev.pending + (isNowDone ? -1 : 1)),
+          done: Math.max(0, prev.done + (isNowDone ? 1 : -1)),
+        };
+      });
+      await ipc()?.invoke('todos:toggle', {
+        taskId,
+        userId: userIdentity.userId || 'usr_local',
+        status: targetStatus,
+      });
+    } catch (err) {
+      console.error('[App] Failed to toggle todo:', err);
+      fetchTodayTodos();
+    }
+  }, [userIdentity.userId, fetchTodayTodos]);
+
+  const handleAddTodo = useCallback(async (title: string, priority: string) => {
+    try {
+      await ipc()?.invoke('todos:create', {
+        title,
+        priority,
+        userId: userIdentity.userId || 'usr_local',
+      });
+      fetchTodayTodos();
+    } catch (err) {
+      console.error('[App] Failed to create todo:', err);
+    }
+  }, [userIdentity.userId, fetchTodayTodos]);
+
+  const fetchConfig = useCallback(async () => {
+    try {
+      const res = (await ipc()?.invoke('config:get')) as (AppConfig & { geminiVoice?: string }) | undefined;
+      if (res) {
+        setConfig(res);
+        setBackendConnected(Boolean(res.backendConnected));
+        if (res.geminiVoice) setCurrentVoice(res.geminiVoice);
+
+      }
+    } catch (err) {
+      console.error('[App] Failed to fetch config:', err);
+    }
+  }, []);
+
   useEffect(() => {
     checkDeviceRegistration();
-  }, [checkDeviceRegistration]);
+    fetchConfig();
+    fetchTodayTodos();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        void ipc()?.invoke('agent:close-whiteboard');
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [checkDeviceRegistration, fetchConfig, fetchTodayTodos]);
+
 
   /* ── Voice: ambient auto-listening (active ONLY when connected) ── */
   const [recording, setRecording] = useState(false);
@@ -521,6 +643,13 @@ export default function App() {
       });
     };
 
+    const onTodosUpdated = (_: unknown, data: unknown) => {
+      const d = data as { counts?: TodoCounts; tasks?: TodoTask[] };
+      console.log('[App] Received real-time TODO_UPDATED:', d);
+      if (d?.counts) setTodoCounts(d.counts);
+      if (Array.isArray(d?.tasks)) setTodoTasks(d.tasks);
+    };
+
     renderer.on('agent:step-update', onStep);
     renderer.on('backend:status', onBackendStatus);
     renderer.on('agent:state-change', onStateChange);
@@ -531,6 +660,7 @@ export default function App() {
     renderer.on('agent:tts-stream-end', onTtsStreamEnd);
     renderer.on('agent:tts-stop', onTtsStop);
     renderer.on('agent:hitl-question', onHitlQuestion);
+    renderer.on('agent:todos-updated', onTodosUpdated);
 
     return () => {
       renderer.removeAllListeners('agent:step-update');
@@ -543,6 +673,7 @@ export default function App() {
       renderer.removeAllListeners('agent:tts-stream-end');
       renderer.removeAllListeners('agent:tts-stop');
       renderer.removeAllListeners('agent:hitl-question');
+      renderer.removeAllListeners('agent:todos-updated');
     };
   }, []);
 
@@ -639,12 +770,19 @@ export default function App() {
     const opts: ExecuteOptions = typeof input === 'string' ? { prompt: input } : input;
     const trimmed = opts.prompt?.trim() || '';
     if (!trimmed && !opts.audioBase64) return;
-    if (inFlightRef.current) return;
+    
+    // Strict single-request concurrency lock
+    if (inFlightRef.current || (isTaskRunning && executorState !== 'paused')) {
+      console.warn('[App] Blocked overlapping request: agent is currently busy.');
+      return;
+    }
     inFlightRef.current = true;
 
-    // Temporarily pause voice engine during execution/TTS
+    // Completely block and mute microphone during execution
+    engineRef.current?.setMuted(true);
     engineRef.current?.deactivate();
     setRecording(false);
+
 
     console.log('[App] sendPrompt started:', opts.isVoice ? '[Spoken Audio]' : trimmed);
 
@@ -699,17 +837,29 @@ export default function App() {
 
       console.log('[App] agent:execute-prompt result:', response);
 
-      const hadWhiteboardTool = response.steps?.some(s => 
-        s.actionName === 'draw_whiteboard_lecture' ||
-        s.actionName === 'draw_whiteboard_step' ||
-        s.actionName === 'draw_mermaid_diagram'
+      const isWbAction = (name?: string) => Boolean(name && (
+        name.includes('whiteboard') || name.includes('mermaid')
+      ));
+
+      const whiteboardStep = response.steps?.find(s => isWbAction(s.actionName));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const extractedWhiteboardData = (response as any).whiteboardData || 
+        (whiteboardStep?.parameters as Record<string, unknown>) || 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((whiteboardStep as any)?.args as Record<string, unknown>) || 
+        undefined;
+
+      const hadWhiteboardTool = Boolean(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (response as any).hadWhiteboard || whiteboardStep || extractedWhiteboardData
       );
 
       let spokeVoiceOutput = false;
       if (response.success && response.message && !hadWhiteboardTool) {
         spokeVoiceOutput = true;
-        await speak(response.message, 'Kore', currentTaskId);
+        await speak(response.message, currentVoice, currentTaskId);
       }
+
 
       const durationMs = Date.now() - startTime;
       const stepsCount = response.steps?.length || 0;
@@ -723,7 +873,8 @@ export default function App() {
         status: response.success ? 'done' : 'error',
         steps: response.steps && response.steps.length > 0 ? response.steps : [],
         spokeVoice: spokeVoiceOutput,
-        hadWhiteboard: !!hadWhiteboardTool,
+        hadWhiteboard: hadWhiteboardTool,
+        whiteboardData: extractedWhiteboardData,
         durationMs,
         outputTokens: {
           prompt: promptTokens,
@@ -731,6 +882,7 @@ export default function App() {
           total: promptTokens + completionTokens,
         },
       };
+
 
       setMessages(prev => prev.map(m => m.id === agentMsgId ? finalAgentMsg : m));
       setStatus(response.success ? 'completed' : 'error');
@@ -741,6 +893,7 @@ export default function App() {
         userId: userIdentity.userId || 'usr_local',
         deviceId: userIdentity.deviceId || 'desktop-main',
       });
+
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -810,10 +963,20 @@ export default function App() {
           suggestedUserName={suggestedUserName || userIdentity.userName}
           onRegister={handleRegisterDevice}
         />
+      ) : showSettings ? (
+        <SettingsPage
+          onBack={() => setShowSettings(false)}
+          userName={userIdentity.userName}
+          currentVoice={currentVoice}
+          onUpdateUserName={handleUpdateUserName}
+          onUpdateVoice={handleUpdateVoice}
+          onPreviewVoice={handlePreviewVoice}
+        />
       ) : (
         <div className="app">
           {/* ── Top Bar ── */}
           <header className="topbar">
+
           <div className="topbar-left flex items-center gap-2">
             <img
               src={appIcon}
@@ -842,18 +1005,91 @@ export default function App() {
           <div className="topbar-right flex items-center gap-1.5">
             {backendConnected && (
               <div
-                className="tooltip tooltip-left"
-                data-tip={`Settings & Profile (${userIdentity.userName || 'User'})`}
+                className="tooltip tooltip-bottom"
+                data-tip={
+                  todoCounts.total > 0
+                    ? `Today's Tasks: ${todoCounts.pending} remaining, ${todoCounts.done} completed (Click to view)`
+                    : "Today's Tasks & Todo List (Click to open)"
+                }
               >
                 <button
-                  className="btn btn-circle btn-sm btn-ghost text-slate-400 hover:text-slate-800 hover:bg-slate-200 transition-all"
-                  onClick={() => setShowSettings(true)}
-                  aria-label="Settings and Profile"
+                  className={`btn btn-sm gap-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
+                    todoCounts.total > 0
+                      ? todoCounts.pending > 0
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-300 hover:bg-amber-500/20'
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-300 hover:bg-emerald-500/20'
+                      : 'btn-ghost border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  }`}
+                  onClick={() => {
+                    fetchTodayTodos();
+                    setShowTodoModal(true);
+                  }}
+                  aria-label="Today's Tasks"
                 >
-                  <Settings size={15} />
+                  <ListTodo
+                    size={14}
+                    className={
+                      todoCounts.total > 0
+                        ? todoCounts.pending > 0
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-zinc-600 dark:text-zinc-400'
+                    }
+                  />
+                  <span>
+                    {todoCounts.total > 0 ? (
+                      todoCounts.pending > 0 ? (
+                        <>
+                          <span className="font-bold">{todoCounts.pending}</span> left
+                          {todoCounts.done > 0 && (
+                            <span className="opacity-60 text-[10px] font-normal"> · {todoCounts.done} done</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="font-bold">{todoCounts.total} done 🎉</span>
+                      )
+                    ) : (
+                      <span>Tasks</span>
+                    )}
+                  </span>
                 </button>
               </div>
             )}
+
+            {backendConnected && (
+              <div
+                className="tooltip tooltip-bottom"
+                data-tip="Start New Cup of Coffee (Clears today's chat, todos & short-term memory)"
+              >
+                <button
+                  className="btn btn-sm btn-ghost gap-1.5 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-semibold shadow-2xs transition-all"
+                  onClick={handleStartNewCup}
+                  disabled={isTaskRunning || inFlightRef.current}
+                  aria-label="Start New Cup of Coffee"
+                >
+                  <Coffee size={14} className="text-zinc-600 dark:text-zinc-300" />
+                  <span className="hidden sm:inline">New Cup</span>
+                </button>
+              </div>
+            )}
+
+
+            {backendConnected && (
+              <div
+                className="tooltip tooltip-bottom"
+                data-tip={`Profile & Settings (${userIdentity.userName || 'User'})`}
+              >
+                <button
+                  className="btn btn-sm btn-ghost gap-2 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-semibold shadow-2xs transition-all px-2.5"
+                  onClick={() => setShowSettings(true)}
+                  aria-label="Settings and Profile"
+                >
+                  <MovingColorsAvatar name={userIdentity.userName || 'You'} size="xs" showGlow={false} />
+                  <span className="hidden sm:inline font-bold">{userIdentity.userName || 'Profile'}</span>
+                </button>
+              </div>
+            )}
+
 
             {backendConnected && (
               <div
@@ -891,33 +1127,10 @@ export default function App() {
           </div>
         </header>
 
-        {/* ── Agent State Bar ── */}
-        {isBusy && (
-          <div className="agent-state-bar">
-            {[
-              { key: 'observing', label: 'OBSERVING' },
-              { key: 'planning', label: 'PLANNING' },
-              { key: 'acting', label: 'ACTING' },
-              { key: 'verifying', label: 'VERIFYING' },
-            ].map((step, i) => {
-              const activeIndex = ['observing', 'planning', 'acting', 'verifying'].findIndex(s => s === executorState);
-              const isActive = i === activeIndex;
-              const isDone = i < activeIndex;
-              return (
-                <React.Fragment key={step.key}>
-                  <span className={`agent-state-step${isActive ? ' active' : ''}${isDone ? ' done' : ''}`}>
-                    <span className="step-dot" />
-                    {step.label}
-                  </span>
-                  {i < 3 && <span className="agent-state-arrow">→</span>}
-                </React.Fragment>
-              );
-            })}
-          </div>
-        )}
-
         {/* ── Chat Area ── */}
         <main className="chat-area" style={{ position: 'relative' }}>
+
+
           {messages.length === 0 ? (
             <div className="empty-state">
               <CoffeeCup />
@@ -946,13 +1159,27 @@ export default function App() {
                   <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" />
                   <span className="font-semibold text-slate-700 dark:text-slate-200">Today's Session</span>
                 </span>
-                <span className="font-mono text-[10px] text-slate-400">
-                  {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                </span>
+                <div className="flex items-center gap-2">
+                  {todoCounts.total > 0 && (
+                    <button
+                      onClick={() => {
+                        fetchTodayTodos();
+                        setShowTodoModal(true);
+                      }}
+                      className="btn btn-xs btn-ghost gap-1 text-[10px] font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 rounded-md px-2 py-0 border border-zinc-300/60 dark:border-zinc-700 shadow-2xs"
+                    >
+                      <ListTodo size={11} className={todoCounts.pending > 0 ? 'text-amber-600' : 'text-emerald-600'} />
+                      <span>{todoCounts.pending} left · {todoCounts.done} done</span>
+                    </button>
+                  )}
+                  <span className="font-mono text-[10px] text-slate-400">
+                    {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
               </div>
               {messages.map(msg =>
                 msg.role === 'user'
-                  ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} />
+                  ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} userName={userIdentity.userName} />
                   : <AgentMessage
                       key={msg.id}
                       msg={msg}
@@ -1056,27 +1283,29 @@ export default function App() {
       </div>
       )}
 
-      {/* Settings Modal (Allows modifying ONLY user name, device details locked) */}
-      <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        userId={userIdentity.userId}
-        userName={userIdentity.userName}
-        deviceId={userIdentity.deviceId}
-        deviceName={userIdentity.deviceName}
-        onUpdateUserName={handleUpdateUserName}
+      {/* Today's Todo List & Tasks Modal */}
+      <TodoListModal
+        isOpen={showTodoModal}
+        onClose={() => setShowTodoModal(false)}
+        tasks={todoTasks}
+        counts={todoCounts}
+        onToggleTask={handleToggleTodo}
+        onAddTask={handleAddTodo}
+        onRefresh={fetchTodayTodos}
       />
     </>
   );
 }
 
 /* ── Sub-components ─────────────────────────────────────────── */
-function UserMessage({ text, isVoice }: { text?: string; isVoice?: boolean }) {
+function UserMessage({ text, isVoice, userName }: { text?: string; isVoice?: boolean; userName?: string }) {
   return (
     <div className="message-row">
-      <div className="msg-avatar user">Y</div>
+      <div className="msg-avatar user overflow-hidden p-0 border-0">
+        <MovingColorsAvatar name={userName || 'You'} size="sm" showGlow={false} />
+      </div>
       <div className="msg-body">
-        <div className="msg-label">You</div>
+        <div className="msg-label">{userName || 'You'}</div>
         {isVoice ? (
           <div
             className="msg-text voice-command-badge"
@@ -1262,6 +1491,57 @@ function AgentMessage({
             <MarkdownView content={msg.text} />
           </div>
         )}
+
+        {/* ── Interactive View Whiteboard Diagram Button ── */}
+        {(msg.hadWhiteboard || msg.whiteboardData || msg.steps?.some(s => s.actionName?.includes('whiteboard') || s.actionName?.includes('mermaid'))) && (
+          <div className="mt-3 pt-2.5 border-t border-base-200/80 flex items-center justify-between gap-2">
+            <button
+              onClick={() => {
+                const isWb = (name?: string) => Boolean(name && (name.includes('whiteboard') || name.includes('mermaid')));
+                const wbSteps = msg.steps?.filter(s => isWb(s.actionName)) || [];
+                let payload = msg.whiteboardData;
+                if (!payload && wbSteps.length > 1) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const firstParam = (wbSteps[0]?.parameters as any) || (wbSteps[0] as any)?.args || {};
+                  payload = {
+                    conceptTitle: firstParam.conceptTitle || 'Whiteboard Lecture',
+                    steps: wbSteps.map((s, idx) => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const p = (s.parameters as Record<string, unknown>) || ((s as any)?.args as Record<string, unknown>) || {};
+                      return {
+                        stepNumber: p.stepNumber ?? (idx + 1),
+                        totalSteps: wbSteps.length,
+                        stepLabel: p.stepLabel ?? `Stage ${idx + 1}`,
+                        notes: p.notes ?? p.bullet_points ?? p.bullets ?? [],
+                        elements: p.elements ?? p.nodes ?? [],
+                        connections: p.connections ?? p.links ?? [],
+                        narration: p.narration ?? '',
+                      };
+                    }),
+                  };
+                } else if (!payload && wbSteps.length === 1) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  payload = (wbSteps[0]?.parameters as Record<string, unknown>) || ((wbSteps[0] as any)?.args as Record<string, unknown>);
+                }
+                if (!payload) {
+                  payload = { conceptTitle: 'Whiteboard Diagram' };
+                }
+                void ipc()?.invoke('agent:show-saved-whiteboard', payload);
+              }}
+              className="btn btn-sm btn-primary rounded-xl gap-2 font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all normal-case text-white"
+              title="Open full interactive whiteboard diagram on screen"
+            >
+              <Presentation size={15} />
+              <span>View Whiteboard Diagram</span>
+              <span className="badge badge-xs bg-white/20 text-white font-mono text-[9px] border-0">ESC to close</span>
+            </button>
+            <span className="text-[11px] text-slate-400 font-medium">
+              Saved in Daily Session
+            </span>
+          </div>
+        )}
+
+
 
       </div>
     </div>

@@ -5,6 +5,21 @@ import { HighlightBox, ScreenPadContent } from '../shared/types';
 
 let overlayWindow: BrowserWindow | null = null;
 
+function sendToOverlay(channel: string, ...args: unknown[]) {
+  const win = createOverlayWindow();
+  if (!win || win.isDestroyed()) return;
+
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', () => {
+      if (!win.isDestroyed()) {
+        win.webContents.send(channel, ...args);
+      }
+    });
+  } else {
+    win.webContents.send(channel, ...args);
+  }
+}
+
 export function createOverlayWindow(): BrowserWindow {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     return overlayWindow;
@@ -19,7 +34,7 @@ export function createOverlayWindow(): BrowserWindow {
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    focusable: false,
+    focusable: true,
     hasShadow: false,
     resizable: false,
     movable: false,
@@ -164,10 +179,10 @@ export function showWhiteboardStep(payload: Record<string, unknown>) {
   try {
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
-      win.showInactive();
-      // Enable mouse events so user can interact with Whiteboard toolbar (Clear/Close)
+      win.show();
       win.setIgnoreMouseEvents(false);
-      win.webContents.send('overlay:whiteboard-step', payload);
+      win.focus();
+      sendToOverlay('overlay:whiteboard-step', payload);
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to show whiteboard step:', err);
@@ -178,9 +193,10 @@ export function showWhiteboardDiagram(payload: Record<string, unknown>) {
   try {
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
-      win.showInactive();
+      win.show();
       win.setIgnoreMouseEvents(false);
-      win.webContents.send('overlay:whiteboard-diagram', payload);
+      win.focus();
+      sendToOverlay('overlay:whiteboard-diagram', payload);
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to show whiteboard diagram:', err);
@@ -191,9 +207,10 @@ export function addWhiteboardClarification(payload: Record<string, unknown>) {
   try {
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
-      win.showInactive();
+      win.show();
       win.setIgnoreMouseEvents(false);
-      win.webContents.send('overlay:whiteboard-clarification', payload);
+      win.focus();
+      sendToOverlay('overlay:whiteboard-clarification', payload);
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to add whiteboard clarification:', err);
@@ -203,7 +220,7 @@ export function addWhiteboardClarification(payload: Record<string, unknown>) {
 export function clearWhiteboard() {
   try {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.webContents.send('overlay:whiteboard-clear');
+      sendToOverlay('overlay:whiteboard-clear');
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to clear whiteboard:', err);
@@ -213,7 +230,7 @@ export function clearWhiteboard() {
 export function closeWhiteboard() {
   try {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.webContents.send('overlay:whiteboard-close');
+      sendToOverlay('overlay:whiteboard-close');
       overlayWindow.setIgnoreMouseEvents(true, { forward: true });
     }
   } catch (err) {

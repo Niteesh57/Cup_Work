@@ -189,8 +189,45 @@ class MainExecutorAgent:
         self._model_name = model_name or config.DEFAULT_MODEL
         self._max_actions = 25
         self._max_llm_calls = 35
+        self._user_locks: Dict[str, asyncio.Lock] = {}
 
     async def execute_prompt(
+        self,
+        prompt: str,
+        task_id: Optional[str] = None,
+        image_base64: Optional[str] = None,
+        audio_base64: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        model: Optional[str] = None,
+        user_id: str = "default",
+        device_id: str = "desktop-main",
+    ) -> Dict[str, Any]:
+        if user_id not in self._user_locks:
+            self._user_locks[user_id] = asyncio.Lock()
+
+        user_lock = self._user_locks[user_id]
+        if user_lock.locked():
+            logger.warning(f"[MainExecutor] Rejecting concurrent request for user {user_id}: another task is running")
+            return {
+                "success": False,
+                "message": "Another task is already in progress. Please wait for it to complete or click Stop.",
+                "taskId": task_id or "task-busy",
+                "steps": [],
+            }
+
+        async with user_lock:
+            return await self._execute_internal(
+                prompt=prompt,
+                task_id=task_id,
+                image_base64=image_base64,
+                audio_base64=audio_base64,
+                mime_type=mime_type,
+                model=model,
+                user_id=user_id,
+                device_id=device_id,
+            )
+
+    async def _execute_internal(
         self,
         prompt: str,
         task_id: Optional[str] = None,
@@ -217,6 +254,7 @@ class MainExecutorAgent:
         try:
             await self._set_state(task_id, AgentState.OBSERVING)
             await event_bus.publish(EventType.OBSERVING_SCREEN, {"taskId": task_id})
+
 
             init_tasks = [
                 electron_bridge.execute_tool("take_screenshot", {}, task_id=task_id) if not image_base64 else asyncio.sleep(0),
@@ -301,10 +339,8 @@ class MainExecutorAgent:
                 function_calls = [p.function_call for p in candidate.content.parts if p.function_call is not None]
                 narrative = "\n".join(p.text for p in candidate.content.parts if p.text).strip()
 
-                if narrative and function_calls:
-                    await self._speak(task_id, narrative)
-
                 if not function_calls:
+
                     # Verification check before declaring completion
                     await self._set_state(task_id, AgentState.VERIFYING)
                     screenshot = await self._screenshot(task_id)

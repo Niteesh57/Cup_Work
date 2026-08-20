@@ -28,6 +28,7 @@ class EventType(str, Enum):
     HITL_QUESTION = "HITL_QUESTION"
     AGENT_STEP_UPDATE = "AGENT_STEP_UPDATE"
     STATE_CHANGE = "STATE_CHANGE"
+    TODO_UPDATED = "TODO_UPDATED"
 
 
 EventHandler = Callable[[str, Dict[str, Any]], Awaitable[None]]

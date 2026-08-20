@@ -10,10 +10,14 @@ import {
   hideScreenGlow,
   destroyOverlayWindow,
   updateScreenGlow,
+  showWhiteboardStep,
+  showWhiteboardDiagram,
   closeWhiteboard,
   closeScreenPad,
   closeHighlightBox
 } from './overlayWindow';
+
+
 
 import { UiaBridge } from './bridge/uiaBridge';
 import { executeBrowserTool, closeLaunchedChrome } from './bridge/browserCdp';
@@ -226,6 +230,11 @@ function connectWebSocket() {
 
         if (msg.type === 'TTS_STREAM_END') {
           mainWindow?.webContents.send('agent:tts-stream-end', msg);
+        }
+
+        // Real-time Todo List updates from Agent tools & backend
+        if (msg.type === 'TODO_UPDATED') {
+          mainWindow?.webContents.send('agent:todos-updated', msg);
         }
 
         // Screen glow on task start / steps / completion
@@ -701,10 +710,22 @@ ipcMain.handle('agent:close-whiteboard', () => {
   return { success: true };
 });
 
+ipcMain.handle('agent:show-saved-whiteboard', (_event, whiteboardData: Record<string, unknown>) => {
+  try {
+    showWhiteboardDiagram(whiteboardData || {});
+    return { success: true };
+  } catch (err: unknown) {
+    console.error('[agent:show-saved-whiteboard] Error:', err);
+    return { success: false, error: String(err) };
+  }
+});
+
+
 ipcMain.handle('agent:close-screenpad', () => {
   closeScreenPad();
   return { success: true };
 });
+
 
 ipcMain.handle('agent:close-box', (_event, { id }: { id: string }) => {
   closeHighlightBox(id);
@@ -767,5 +788,82 @@ ipcMain.handle('session:clear-today', async (_event, payload?: { userId?: string
     return { success: false };
   }
 });
+
+ipcMain.handle('session:start-new-cup', async (_event, payload?: { userId?: string; deviceId?: string; dateStr?: string }) => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/session/start-new-cup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: payload?.userId || 'usr_local',
+        deviceId: payload?.deviceId || localDeviceId,
+        dateStr: payload?.dateStr,
+      }),
+    });
+    return (await res.json()) as { success: boolean; message?: string };
+  } catch (err: unknown) {
+    console.error('[session:start-new-cup] Error:', err);
+    return { success: false, error: String(err) };
+  }
+});
+
+// ── Todo Tasks IPC Handlers ──────────────────────────────────────────────────
+ipcMain.handle('todos:get-today', async (_event, payload?: { userId?: string; deviceId?: string }) => {
+  try {
+    const uid = encodeURIComponent(payload?.userId || 'usr_local');
+    const did = encodeURIComponent(payload?.deviceId || localDeviceId);
+    const res = await fetch(`${BACKEND_HTTP}/api/todos/today?userId=${uid}&deviceId=${did}`);
+    if (!res.ok) return { success: false, counts: { total: 0, pending: 0, done: 0 }, tasks: [] };
+    const data = await res.json();
+    return data;
+  } catch (err: unknown) {
+    console.error('[todos:get-today] Error:', err);
+    return { success: false, counts: { total: 0, pending: 0, done: 0 }, tasks: [] };
+  }
+});
+
+ipcMain.handle('todos:toggle', async (_event, payload: { taskId: string; userId?: string; status?: string }) => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/todos/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: payload.taskId,
+        userId: payload.userId || 'usr_local',
+        status: payload.status,
+        deviceId: localDeviceId,
+      }),
+    });
+    if (!res.ok) return { success: false };
+    const data = await res.json();
+    return data;
+  } catch (err: unknown) {
+    console.error('[todos:toggle] Error:', err);
+    return { success: false };
+  }
+});
+
+ipcMain.handle('todos:create', async (_event, payload: { title: string; priority?: string; description?: string; userId?: string }) => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/todos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: payload.title,
+        priority: payload.priority || 'medium',
+        description: payload.description,
+        userId: payload.userId || 'usr_local',
+        deviceId: localDeviceId,
+      }),
+    });
+    if (!res.ok) return { success: false };
+    const data = await res.json();
+    return data;
+  } catch (err: unknown) {
+    console.error('[todos:create] Error:', err);
+    return { success: false };
+  }
+});
+
 
 

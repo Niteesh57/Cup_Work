@@ -54,6 +54,7 @@ for _event_type in (
     EventType.AGENT_STEP_UPDATE,
     EventType.TASK_COMPLETED,
     EventType.TASK_FAILED,
+    EventType.TODO_UPDATED,
 ):
     event_bus.subscribe(_event_type, _forward_event_to_electron)
 
@@ -330,8 +331,9 @@ async def save_session_message(data: Dict[str, Any] = Body(...)):
     duration_ms = int(data.get("durationMs") or 0)
     output_tokens = data.get("outputTokens")
     hitl = data.get("hitl")
+    whiteboard_data = data.get("whiteboardData") or data.get("whiteboard_data")
     spoke_voice = bool(data.get("spokeVoice"))
-    had_whiteboard = bool(data.get("hadWhiteboard"))
+    had_whiteboard = bool(data.get("hadWhiteboard")) or bool(whiteboard_data)
     date_str = data.get("dateStr")
     created_at = data.get("createdAt")
 
@@ -347,11 +349,13 @@ async def save_session_message(data: Dict[str, Any] = Body(...)):
         duration_ms=duration_ms,
         output_tokens=output_tokens,
         hitl=hitl,
+        whiteboard_data=whiteboard_data,
         spoke_voice=spoke_voice,
         had_whiteboard=had_whiteboard,
         date_str=date_str,
         created_at=created_at,
     )
+
     return {"success": True, "id": saved_id}
 
 
@@ -362,6 +366,38 @@ async def clear_today_session(data: Dict[str, Any] = Body(...)):
     date_str = data.get("dateStr")
     memory_manager.clear_today_chat_messages(user_id=user_id, device_id=device_id, date_str=date_str)
     return {"success": True}
+
+
+@app.post("/api/session/start-new-cup")
+async def start_new_cup_endpoint(data: Dict[str, Any] = Body(...)):
+    """Wipes today's chat messages, short-term memory, and todos to start a fresh coffee cup session."""
+    user_id = str(data.get("userId") or "default")
+    device_id = data.get("deviceId")
+    date_str = data.get("dateStr")
+    res = memory_manager.start_new_coffee_cup(user_id=user_id, device_id=device_id, date_str=date_str)
+    return res
+
+
+@app.get("/api/config")
+async def get_config_endpoint():
+    """Returns current runtime model and voice configuration."""
+    from backend import config as app_config
+    return {
+        "geminiModel": getattr(app_config, "DEFAULT_MODEL", "gemini-3.7-flash"),
+        "geminiVoice": getattr(app_config, "DEFAULT_VOICE", "Kore"),
+    }
+
+
+@app.post("/api/config")
+async def save_config_endpoint(data: Dict[str, Any] = Body(...)):
+    """Updates runtime model and voice configuration."""
+    from backend import config as app_config
+    if "geminiVoice" in data and data["geminiVoice"]:
+        app_config.DEFAULT_VOICE = str(data["geminiVoice"])
+    if "geminiModel" in data and data["geminiModel"]:
+        app_config.DEFAULT_MODEL = str(data["geminiModel"])
+    return {"success": True}
+
 
 
 # ── Full Context, Memory, Preference & Todo APIs ──────────────────────────────
@@ -411,6 +447,60 @@ async def expire_preference(req: ExpirePreferenceRequest):
     return {"success": ok, "message": f"Preference '{req.key}' expired." if ok else "Preference not found or already expired."}
 
 # ── Todo-Tasks APIs ───────────────────────────────────────────────────────────
+@app.get("/api/todos/today")
+async def get_today_todos(userId: str = "default", deviceId: Optional[str] = None):
+    """Returns today's active & completed tasks with summary counts."""
+    todos = memory_manager.get_all_todos(user_id=userId, device_id=deviceId)
+    pending = [t for t in todos if t.get("status") != "completed"]
+    done = [t for t in todos if t.get("status") == "completed"]
+    return {
+        "success": True,
+        "userId": userId,
+        "counts": {
+            "total": len(todos),
+            "pending": len(pending),
+            "done": len(done),
+        },
+        "tasks": todos,
+    }
+
+
+@app.post("/api/todos/toggle")
+async def toggle_todo_status(data: Dict[str, Any] = Body(...)):
+    """Toggles a task between completed and pending status."""
+    task_id = str(data.get("taskId") or data.get("id") or "")
+    user_id = str(data.get("userId") or "default")
+    target_status = data.get("status")
+    device_id = data.get("deviceId")
+
+    all_todos = memory_manager.get_all_todos(user_id=user_id, device_id=device_id)
+    target_task = next((t for t in all_todos if t.get("id") == task_id), None)
+    if not target_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if not target_status:
+        target_status = "pending" if target_task.get("status") == "completed" else "completed"
+
+    updated = memory_manager.update_todo(task_id=task_id, user_id=user_id, status=target_status)
+
+    # Broadcast updated counts & tasks
+    refreshed = memory_manager.get_all_todos(user_id=user_id, device_id=device_id)
+    pending = [t for t in refreshed if t.get("status") != "completed"]
+    done = [t for t in refreshed if t.get("status") == "completed"]
+    counts = {
+        "total": len(refreshed),
+        "pending": len(pending),
+        "done": len(done),
+    }
+    await event_bus.publish(EventType.TODO_UPDATED, {
+        "userId": user_id,
+        "deviceId": device_id,
+        "counts": counts,
+        "tasks": refreshed,
+    })
+    return {"success": True, "task": updated, "counts": counts}
+
+
 @app.get("/api/todos")
 async def list_todos(userId: str = "default", status: Optional[str] = None, priority: Optional[str] = None, deviceId: Optional[str] = None):
     todos = memory_manager.get_all_todos(user_id=userId, status=status, priority=priority, device_id=deviceId)
@@ -427,6 +517,20 @@ async def create_todo(req: CreateTodoRequest):
         tags=req.tags,
         device_id=req.deviceId or "desktop-main"
     )
+    # Broadcast updated counts & tasks
+    refreshed = memory_manager.get_all_todos(user_id=req.userId or "default", device_id=req.deviceId or "desktop-main")
+    pending = [t for t in refreshed if t.get("status") != "completed"]
+    done = [t for t in refreshed if t.get("status") == "completed"]
+    await event_bus.publish(EventType.TODO_UPDATED, {
+        "userId": req.userId or "default",
+        "deviceId": req.deviceId or "desktop-main",
+        "counts": {
+            "total": len(refreshed),
+            "pending": len(pending),
+            "done": len(done),
+        },
+        "tasks": refreshed,
+    })
     return {"success": True, "task": task}
 
 @app.patch("/api/todos/{task_id}")
@@ -444,6 +548,20 @@ async def update_todo(task_id: str, req: UpdateTodoRequest):
     )
     if not updated:
         raise HTTPException(status_code=404, detail=f"Todo task '{task_id}' not found for user '{user_id}'.")
+
+    # Broadcast updated counts & tasks
+    refreshed = memory_manager.get_all_todos(user_id=user_id)
+    pending = [t for t in refreshed if t.get("status") != "completed"]
+    done = [t for t in refreshed if t.get("status") == "completed"]
+    await event_bus.publish(EventType.TODO_UPDATED, {
+        "userId": user_id,
+        "counts": {
+            "total": len(refreshed),
+            "pending": len(pending),
+            "done": len(done),
+        },
+        "tasks": refreshed,
+    })
     return {"success": True, "task": updated}
 
 @app.delete("/api/todos/{task_id}")

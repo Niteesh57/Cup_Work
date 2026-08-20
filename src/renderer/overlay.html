@@ -1236,65 +1236,18 @@
       wbClarifyCont.appendChild(card);
     });
 
-    // 8. Structured Diagram IPC Handler
-    ipcRenderer.on('overlay:whiteboard-diagram', (_e, data) => {
+    // 8. Structured Diagram / Saved Whiteboard Rehydration IPC Handler
+    ipcRenderer.on('overlay:whiteboard-diagram', (_e, rawData) => {
       wbLayer.classList.add('active');
-      if (data.conceptTitle) wbConceptTitle.textContent = data.conceptTitle;
-
-      wbGroupConn.innerHTML = '';
-      wbGroupNodes.innerHTML = '';
-      wbStepsContainer.innerHTML = '';
-      wbClarifyCont.innerHTML = '';
-      nodeRegistry.clear();
-      connectionCounts.clear();
-
-      if (data.notes) {
-        addStepCard(1, 1, 'Architecture Overview', data.notes);
+      let data = rawData;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch(e){}
       }
+      if (!data || typeof data !== 'object') data = {};
 
-      let targetCenterX = 0;
-      let targetCenterY = 0;
-      let nodeCount = 0;
+      const title = data.conceptTitle || data.concept_title || data.title || 'Whiteboard Diagram';
+      wbConceptTitle.textContent = title;
 
-      if (Array.isArray(data.nodes)) {
-        const cols = Math.min(3, Math.max(2, Math.ceil(Math.sqrt(data.nodes.length))));
-        const startX = 0;
-        const startY = 0;
-        const spacingX = 360;
-        const spacingY = 220;
-
-        data.nodes.forEach((node, i) => {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const nodeWithCoords = {
-            ...node,
-            x: node.x !== undefined ? node.x : startX + col * spacingX,
-            y: node.y !== undefined ? node.y : startY + row * spacingY,
-            width: node.width || 200,
-            height: node.height || 90
-          };
-          renderWhiteboardNode(nodeWithCoords);
-          const reg = nodeRegistry.get(nodeWithCoords.id);
-          if (reg) {
-            targetCenterX += reg.cx;
-            targetCenterY += reg.cy;
-            nodeCount++;
-          }
-        });
-      }
-
-      if (Array.isArray(data.connections)) {
-        data.connections.forEach(conn => renderWhiteboardConnection(conn));
-      }
-
-      if (nodeCount > 0) {
-        autoFocusOn(targetCenterX / nodeCount, targetCenterY / nodeCount);
-      }
-    });
-
-    // 9. Whiteboard Controls & ESC Handler
-    function closeWhiteboard() {
-      wbLayer.classList.remove('active');
       wbGroupConn.innerHTML = '';
       wbGroupNodes.innerHTML = '';
       wbStepsContainer.innerHTML = '';
@@ -1302,7 +1255,149 @@
       nodeRegistry.clear();
       connectionCounts.clear();
       renderedConnectionKeys.clear();
-      ipcRenderer.invoke('agent:close-whiteboard');
+
+      let targetCenterX = 0;
+      let targetCenterY = 0;
+      let nodeCount = 0;
+
+      let steps = data.steps;
+      if (typeof steps === 'string') {
+        try { steps = JSON.parse(steps); } catch(e){}
+      }
+
+      // Case A: Full Lecture with multiple steps
+      if (Array.isArray(steps) && steps.length > 0) {
+        steps.forEach((step, idx) => {
+          if (typeof step === 'string') {
+            try { step = JSON.parse(step); } catch(e){}
+          }
+          if (!step || typeof step !== 'object') return;
+
+          const stepNum = step.stepNumber !== undefined ? step.stepNumber : (step.step_number !== undefined ? step.step_number : (idx + 1));
+          const totalSteps = steps.length;
+          const stepLabel = step.stepLabel || step.step_label || step.title || `Stage ${stepNum}`;
+          let notes = step.notes || step.bullet_points || step.bullets || [];
+          if (typeof notes === 'string') {
+            try { notes = JSON.parse(notes); } catch(e){ notes = [notes]; }
+          }
+          addStepCard(stepNum, totalSteps, stepLabel, notes);
+
+          let elements = step.elements || step.nodes || [];
+          if (typeof elements === 'string') {
+            try { elements = JSON.parse(elements); } catch(e){}
+          }
+          if (Array.isArray(elements)) {
+            elements.forEach(node => {
+              if (typeof node === 'string') {
+                try { node = JSON.parse(node); } catch(e){}
+              }
+              if (!node || typeof node !== 'object') return;
+              renderWhiteboardNode(node);
+              const reg = nodeRegistry.get(node.id);
+              if (reg) {
+                targetCenterX += reg.cx;
+                targetCenterY += reg.cy;
+                nodeCount++;
+              }
+            });
+          }
+
+          let connections = step.connections || step.links || [];
+          if (typeof connections === 'string') {
+            try { connections = JSON.parse(connections); } catch(e){}
+          }
+          if (Array.isArray(connections)) {
+            connections.forEach(conn => {
+              if (typeof conn === 'string') {
+                try { conn = JSON.parse(conn); } catch(e){}
+              }
+              if (conn && typeof conn === 'object') {
+                renderWhiteboardConnection(conn);
+              }
+            });
+          }
+        });
+      } else {
+        // Case B: Static diagram or accumulated snapshot
+        let nodesList = data.nodes || data.allElements || data.elements || [];
+        if (typeof nodesList === 'string') {
+          try { nodesList = JSON.parse(nodesList); } catch(e){}
+        }
+
+        let notes = data.notes || data.allNotes || data.bullet_points || [];
+        if (typeof notes === 'string') {
+          try { notes = JSON.parse(notes); } catch(e){ notes = [notes]; }
+        }
+        if (notes && (Array.isArray(notes) ? notes.length > 0 : Boolean(notes))) {
+          addStepCard(1, 1, title || 'Architecture Overview', notes);
+        }
+
+        if (Array.isArray(nodesList)) {
+          const cols = Math.min(3, Math.max(2, Math.ceil(Math.sqrt(nodesList.length))));
+          const startX = 0;
+          const startY = 0;
+          const spacingX = 360;
+          const spacingY = 220;
+
+          nodesList.forEach((node, i) => {
+            if (typeof node === 'string') {
+              try { node = JSON.parse(node); } catch(e){}
+            }
+            if (!node || typeof node !== 'object') return;
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const nodeWithCoords = {
+              ...node,
+              x: node.x !== undefined ? node.x : startX + col * spacingX,
+              y: node.y !== undefined ? node.y : startY + row * spacingY,
+              width: node.width || 200,
+              height: node.height || 90
+            };
+            renderWhiteboardNode(nodeWithCoords);
+            const reg = nodeRegistry.get(nodeWithCoords.id);
+            if (reg) {
+              targetCenterX += reg.cx;
+              targetCenterY += reg.cy;
+              nodeCount++;
+            }
+          });
+        }
+
+        let connsList = data.connections || data.allConnections || data.links || [];
+        if (typeof connsList === 'string') {
+          try { connsList = JSON.parse(connsList); } catch(e){}
+        }
+        if (Array.isArray(connsList)) {
+          connsList.forEach(conn => {
+            if (typeof conn === 'string') {
+              try { conn = JSON.parse(conn); } catch(e){}
+            }
+            if (conn && typeof conn === 'object') {
+              renderWhiteboardConnection(conn);
+            }
+          });
+        }
+      }
+
+      if (nodeCount > 0) {
+        autoFocusOn(targetCenterX / nodeCount, targetCenterY / nodeCount);
+      } else {
+        autoFocusOn(0, 0);
+      }
+    });
+
+    // 9. Whiteboard Controls & ESC Handler
+    function closeWhiteboard(notifyMain = true) {
+      wbLayer.classList.remove('active');
+      clearWhiteboard();
+      cameraX = 0;
+      cameraY = 0;
+      cameraZoom = 1;
+      wbCameraStage.style.transition = 'none';
+      wbCameraStage.style.transform = 'translate(0px, 0px) scale(1)';
+      if (notifyMain) {
+        ipcRenderer.invoke('agent:close-whiteboard').catch(() => {});
+      }
     }
 
     function clearWhiteboard() {
@@ -1315,20 +1410,19 @@
       renderedConnectionKeys.clear();
     }
 
-
-    wbCloseBtn.addEventListener('click', closeWhiteboard);
+    wbCloseBtn.addEventListener('click', () => closeWhiteboard(true));
 
     ipcRenderer.on('overlay:whiteboard-clear', clearWhiteboard);
-    ipcRenderer.on('overlay:whiteboard-close', closeWhiteboard);
+    ipcRenderer.on('overlay:whiteboard-close', () => closeWhiteboard(false));
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (wbLayer.classList.contains('active')) {
-          closeWhiteboard();
+          closeWhiteboard(true);
         }
         if (screenpad.classList.contains('visible')) {
           screenpad.classList.remove('visible');
-          ipcRenderer.invoke('agent:close-screenpad');
+          ipcRenderer.invoke('agent:close-screenpad').catch(() => {});
         }
         boxLayer.innerHTML = '';
       }

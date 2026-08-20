@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Laptop, Lock, User, ArrowRight, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { MovingColorsAvatar } from './MovingColorsAvatar';
 import appIcon from '../assets/icon.png';
 
 interface DeviceRegistrationScreenProps {
@@ -123,23 +124,23 @@ export function DeviceRegistrationScreen({
                 Auto-Generated
               </span>
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={userNameInput}
-                onChange={(e) => {
-                  setUserNameInput(e.target.value);
-                  setErrorMsg('');
-                }}
-                maxLength={36}
-                placeholder="Enter your name…"
-                className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-sm font-semibold text-slate-900 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-all shadow-inner"
-                style={{ color: '#0f172a' }}
-                autoFocus
-              />
-              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
-                You can change this later in Settings
-              </span>
+            <div className="flex items-center gap-3">
+              <MovingColorsAvatar name={userNameInput} size="md" showGlow={false} />
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={userNameInput}
+                  onChange={(e) => {
+                    setUserNameInput(e.target.value);
+                    setErrorMsg('');
+                  }}
+                  maxLength={36}
+                  placeholder="Enter your name…"
+                  className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-sm font-semibold text-slate-900 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-all shadow-inner"
+                  style={{ color: '#0f172a' }}
+                  autoFocus
+                />
+              </div>
             </div>
           </div>
 

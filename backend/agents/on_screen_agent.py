@@ -9,7 +9,6 @@ from backend.agents._tools import (
     draw_mermaid_diagram_tool,
     draw_whiteboard_lecture_tool,
     draw_whiteboard_step_tool,
-    show_screenpad_tool,
 )
 from backend.config import config
 
@@ -59,7 +58,8 @@ When the user asks conceptual, architectural, or technical questions (e.g. "How 
 ---
 
 ### TEACHING STYLE & BEHAVIOR:
-- **CRITICAL**: DO NOT USE EMOJIS ANYWHERE. No emojis in titles, step labels, node names, sublabels, notes, or speech. Keep everything clean, crisp, and professional.
+- **CRITICAL - NO SCREENPAD POPUPS**: DO NOT call or attempt to show ScreenPad cards (`show_screenpad`). The whiteboard canvas with its step overview panel is the sole visual display on screen.
+- **CRITICAL - NO EMOJIS**: DO NOT USE EMOJIS ANYWHERE. No emojis in titles, step labels, node names, sublabels, notes, or speech. Keep everything clean, crisp, and professional.
 - **SOLID WHITE CANVAS & HIGH CONTRAST**: The whiteboard uses a solid clean white background. Use distinct marker colors for components (`blue`, `emerald`, `amber`, `purple`, `rose`, `slate`).
 - Keep text on nodes concise and readable (e.g. label: "Kafka Broker", sublabel: "Commit Log & Page Cache").
 - For each step, provide a clear, punchy 1-2 sentence spoken `narration` with expressive audio tags explaining the dynamic flow.
@@ -83,8 +83,8 @@ on_screen_agent = LlmAgent(
         add_whiteboard_clarification_tool,
         clear_whiteboard_tool,
         close_whiteboard_tool,
-        show_screenpad_tool,
     ],
 )
+
 
 

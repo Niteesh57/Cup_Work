@@ -682,9 +682,11 @@ export class UiaBridge {
       case 'speak_sync':
         return (await this.speakSync(String(args.text || ''))) as unknown as Record<string, unknown>;
       case 'draw_whiteboard_lecture': {
+        closeScreenPad();
         const conceptTitle = String(args.conceptTitle || 'Concept');
         const steps = Array.isArray(args.steps) ? (args.steps as Array<Record<string, unknown>>) : [];
         const delaySec = typeof args.stepDelaySeconds === 'number' ? args.stepDelaySeconds : 1.5;
+
 
         for (let i = 0; i < steps.length; i++) {
           const stepData = { ...steps[i] };
