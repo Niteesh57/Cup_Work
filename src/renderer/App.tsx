@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentStatus, AgentStep, AppConfig, ExecutionResponse, ExecutorState } from '../shared/types';
 import { VoiceEngine } from './voiceEngine';
-import { Loader2, Mic, MicOff, X, Pause, Play, Square } from 'lucide-react';
+import { Loader2, Mic, MicOff, X, Pause, Play, Square, Settings } from 'lucide-react';
 import { CommentaryBanner } from './components/CommentaryBanner';
 import { MarkdownView } from './components/MarkdownView';
 import { ToolCallTimeline } from './components/ToolCallTimeline';
 import { CoffeeCup, StaticCupIcon } from './components/CoffeeCup';
+import { SettingsModal } from './components/SettingsModal';
+import { DeviceRegistrationScreen } from './components/DeviceRegistrationScreen';
 
 
 
@@ -109,7 +111,127 @@ export default function App() {
     geminiModel: '',
     backendConnected: false,
   });
+  const [showSettings, setShowSettings] = useState(false);
+  const [isDeviceRegistered, setIsDeviceRegistered] = useState<boolean | null>(null);
+  const [suggestedUserName, setSuggestedUserName] = useState<string>('');
+  const [userIdentity, setUserIdentity] = useState<{
+    userId: string;
+    userName: string;
+    deviceId: string;
+    deviceName: string;
+  }>({
+    userId: '',
+    userName: 'User',
+    deviceId: '',
+    deviceName: 'Desktop',
+  });
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  /* ── Multi-User Identity Fetch & Update ─────────────────────────── */
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      const res = (await ipc()?.invoke('user:get-profile')) as {
+        success: boolean;
+        userId: string;
+        userName: string;
+        deviceId: string;
+        deviceName: string;
+      } | undefined;
+      if (res && res.success) {
+        setUserIdentity({
+          userId: res.userId,
+          userName: res.userName,
+          deviceId: res.deviceId,
+          deviceName: res.deviceName,
+        });
+      }
+    } catch (err) {
+      console.error('[App] Failed to fetch user profile:', err);
+    }
+  }, []);
+
+  const checkDeviceRegistration = useCallback(async () => {
+    try {
+      const res = (await ipc()?.invoke('device:check-status')) as {
+        success: boolean;
+        registered: boolean;
+        deviceId: string;
+        deviceName: string;
+        userId?: string;
+        userName?: string;
+        suggestedUserName?: string;
+      } | undefined;
+
+      if (res && res.success) {
+        setUserIdentity(prev => ({
+          userId: res.userId || prev.userId,
+          userName: res.userName || res.suggestedUserName || prev.userName,
+          deviceId: res.deviceId || prev.deviceId,
+          deviceName: res.deviceName || prev.deviceName,
+        }));
+        setSuggestedUserName(res.suggestedUserName || '');
+        setIsDeviceRegistered(res.registered);
+        if (res.registered) {
+          fetchUserProfile();
+        }
+      } else {
+        setIsDeviceRegistered(true);
+        fetchUserProfile();
+      }
+    } catch (err) {
+      console.error('[App] Failed to check device status:', err);
+      setIsDeviceRegistered(true);
+    }
+  }, [fetchUserProfile]);
+
+  const handleRegisterDevice = useCallback(async (customName: string): Promise<boolean> => {
+    try {
+      const res = (await ipc()?.invoke('device:register', customName)) as {
+        success: boolean;
+        userId: string;
+        userName: string;
+        deviceId: string;
+        deviceName: string;
+      } | undefined;
+
+      if (res && res.success) {
+        setUserIdentity({
+          userId: res.userId,
+          userName: res.userName,
+          deviceId: res.deviceId,
+          deviceName: res.deviceName,
+        });
+        setIsDeviceRegistered(true);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('[App] Device registration failed:', err);
+      return false;
+    }
+  }, []);
+
+  const handleUpdateUserName = useCallback(async (newName: string): Promise<boolean> => {
+    if (!userIdentity.userId) return false;
+    try {
+      const res = (await ipc()?.invoke('user:update-name', {
+        userId: userIdentity.userId,
+        name: newName,
+      })) as { success: boolean } | undefined;
+      if (res && res.success) {
+        setUserIdentity(prev => ({ ...prev, userName: newName }));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('[App] Failed to update user name:', err);
+      return false;
+    }
+  }, [userIdentity.userId]);
+
+  useEffect(() => {
+    checkDeviceRegistration();
+  }, [checkDeviceRegistration]);
 
   /* ── Voice: ambient auto-listening (active ONLY when connected) ── */
   const [recording, setRecording] = useState(false);
@@ -266,6 +388,7 @@ export default function App() {
       const st = data as { connected: boolean };
       setBackendConnected(st.connected);
       if (st.connected) {
+        checkDeviceRegistration();
         renderer.invoke('config:get').then((res) => {
           if (res) setConfig(res as AppConfig);
         }).catch(console.error);
@@ -468,8 +591,20 @@ export default function App() {
         audioBase64: opts.audioBase64,
         mimeType: opts.mimeType,
         taskId: currentTaskId,
+        userId: userIdentity.userId || undefined,
+        deviceId: userIdentity.deviceId || undefined,
+        deviceName: userIdentity.deviceName || undefined,
         model: config.geminiModel,
       }) as ExecutionResponse;
+
+      if (response.userId && response.userName) {
+        setUserIdentity(prev => ({
+          userId: response.userId || prev.userId,
+          userName: response.userName || prev.userName,
+          deviceId: response.deviceId || prev.deviceId,
+          deviceName: response.deviceName || prev.deviceName,
+        }));
+      }
 
       console.log('[App] agent:execute-prompt result:', response);
 
@@ -485,7 +620,7 @@ export default function App() {
         setIsSpeaking(true);
         engineRef.current?.setMuted(true);
         engineRef.current?.deactivate();
-        showBorderGlow(true, '🔊 Hey Jave is speaking…', 'speaking');
+        showBorderGlow(true, '🔊 Cup Work is speaking…', 'speaking');
         await speak(response.message);
         setIsSpeaking(false);
         await new Promise(r => setTimeout(r, 600));
@@ -598,9 +733,17 @@ export default function App() {
       {/* Window edge animation — visible while agent/user is speaking or busy */}
       <div className={`edge-border${isAnimationActive ? ' is-active' : ''}`} />
 
-      <div className="app">
-        {/* ── Top Bar ── */}
-        <header className="topbar">
+      {backendConnected && isDeviceRegistered === false ? (
+        <DeviceRegistrationScreen
+          deviceId={userIdentity.deviceId}
+          deviceName={userIdentity.deviceName}
+          suggestedUserName={suggestedUserName || userIdentity.userName}
+          onRegister={handleRegisterDevice}
+        />
+      ) : (
+        <div className="app">
+          {/* ── Top Bar ── */}
+          <header className="topbar">
           <div className="topbar-left">
             <div className="logo-icon">
               <StaticCupIcon size={18} />
@@ -625,6 +768,21 @@ export default function App() {
           </div>
 
           <div className="topbar-right flex items-center gap-1.5">
+            {backendConnected && (
+              <div
+                className="tooltip tooltip-left"
+                data-tip={`Settings & Profile (${userIdentity.userName || 'User'})`}
+              >
+                <button
+                  className="btn btn-circle btn-sm btn-ghost text-slate-400 hover:text-slate-800 hover:bg-slate-200 transition-all"
+                  onClick={() => setShowSettings(true)}
+                  aria-label="Settings and Profile"
+                >
+                  <Settings size={15} />
+                </button>
+              </div>
+            )}
+
             {backendConnected && (
               <div
                 className="tooltip tooltip-left"
@@ -813,6 +971,18 @@ export default function App() {
           )}
         </div>
       </div>
+      )}
+
+      {/* Settings Modal (Allows modifying ONLY user name, device details locked) */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        userId={userIdentity.userId}
+        userName={userIdentity.userName}
+        deviceId={userIdentity.deviceId}
+        deviceName={userIdentity.deviceName}
+        onUpdateUserName={handleUpdateUserName}
+      />
     </>
   );
 }

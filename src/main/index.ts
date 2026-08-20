@@ -263,7 +263,7 @@ function createWindow(): void {
     minWidth: 620,
     minHeight: 520,
     frame: true,
-    title: 'Hey Jave — Desktop AI Agent',
+    title: 'Cup Work — Desktop AI Agent',
     icon: path.join(__dirname, '../../build/icon.png'),
     webPreferences: {
       nodeIntegration: true,
@@ -429,7 +429,7 @@ ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
   if (!text) return { success: false, error: 'No text to speak' };
   
   try {
-    showScreenGlow('🔊 Hey Jave is speaking…', 'speaking');
+    showScreenGlow('🔊 Cup Work is speaking…', 'speaking');
     await speakTextNative(text);
     hideScreenGlow();
     return { success: true };
@@ -494,6 +494,69 @@ ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>)
 });
 
 // ── IPC: User Identity & Profile (Supports modifying ONLY name) ───────────────
+ipcMain.handle('device:check-status', async () => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/device/status?deviceId=${encodeURIComponent(localDeviceId)}`);
+    if (!res.ok) return { success: false, registered: false, deviceId: localDeviceId, deviceName: localDeviceName };
+    const data = (await res.json()) as {
+      registered: boolean;
+      exists?: boolean;
+      userId?: string;
+      userName?: string;
+      suggestedUserName?: string;
+    };
+    return {
+      success: true,
+      registered: !!data.registered,
+      deviceId: localDeviceId,
+      deviceName: localDeviceName,
+      userId: data.userId,
+      userName: data.userName,
+      suggestedUserName: data.suggestedUserName,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      registered: false,
+      deviceId: localDeviceId,
+      deviceName: localDeviceName,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+ipcMain.handle('device:register', async (_event, customName?: string) => {
+  try {
+    const regRes = await fetch(`${BACKEND_HTTP}/api/device/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId: localDeviceId,
+        deviceName: localDeviceName,
+      }),
+    });
+    if (!regRes.ok) return { success: false, error: 'Failed to register device' };
+    const identity = (await regRes.json()) as {
+      userId: string;
+      userName: string;
+      deviceId: string;
+      deviceName: string;
+    };
+
+    if (customName && customName.trim() && customName.trim() !== identity.userName) {
+      await fetch(`${BACKEND_HTTP}/api/user/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: identity.userId, name: customName.trim() }),
+      });
+      identity.userName = customName.trim();
+    }
+    return { success: true, ...identity };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
 ipcMain.handle('user:get-profile', async (_event, userId?: string) => {
   try {
     const regRes = await fetch(`${BACKEND_HTTP}/api/device/register`, {

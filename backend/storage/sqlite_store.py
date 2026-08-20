@@ -230,6 +230,25 @@ class SqliteStore:
         num = random.randint(10, 99)
         return f"{adj}{noun}_{num}"
 
+    def is_device_registered(self, device_id: str) -> Optional[Dict[str, Any]]:
+        """Checks if device_id is already registered in DB without creating new records."""
+        if not device_id or not device_id.strip():
+            return None
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM devices WHERE id = ?", (device_id.strip(),))
+            dev_row = cur.fetchone()
+            if not dev_row:
+                return None
+            user_cur = conn.execute("SELECT * FROM users WHERE id = ?", (dev_row["user_id"],))
+            user_row = user_cur.fetchone()
+            return {
+                "exists": True,
+                "deviceId": dev_row["id"],
+                "deviceName": dev_row["device_name"],
+                "userId": dev_row["user_id"],
+                "userName": user_row["name"] if user_row else dev_row["user_id"],
+            }
+
     def get_or_create_device_and_user(
         self,
         device_id: Optional[str] = None,

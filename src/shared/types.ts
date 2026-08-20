@@ -182,6 +182,10 @@ export interface ExecutionResponse {
   message:    string;
   steps:      AgentStep[];
   taskId?:    string;
+  userId?:    string;
+  deviceId?:  string;
+  userName?:  string;
+  deviceName?: string;
   error?:     string;
   spokeVoice?: boolean;
   stats?: {

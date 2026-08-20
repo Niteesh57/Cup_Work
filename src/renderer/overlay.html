@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Hey Jave Screen Overlay</title>
+  <title>Cup Work Screen Overlay</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
 
@@ -577,7 +577,7 @@
   <div id="glow" class="screen-glow">
     <div class="status-pill">
       <div class="pulse-dot"></div>
-      <span id="status-text" class="prompt-text">Hey Jave Active</span>
+      <span id="status-text" class="prompt-text">Cup Work Active</span>
     </div>
   </div>
 
@@ -695,7 +695,7 @@
       const text = typeof data === 'string' ? data : (data?.text || '');
       const mode = typeof data === 'object' && data?.mode ? data.mode : 'thinking';
 
-      statusText.textContent = text ? text : 'Hey Jave Active';
+      statusText.textContent = text ? text : 'Cup Work Active';
 
       glow.classList.remove('user-speaking', 'thinking', 'executing', 'speaking');
       glow.classList.add('active', mode);

@@ -13,8 +13,8 @@
     "start": "electron ."
   },
   "build": {
-    "appId": "com.heyjave.desktop",
-    "productName": "Hey Jave",
+    "appId": "com.cupwork.desktop",
+    "productName": "Cup Work",
     "directories": {
       "output": "release"
     },

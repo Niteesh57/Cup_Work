@@ -11,7 +11,7 @@ from backend.config import config
 
 def start():
     print(f"=====================================================")
-    print(f"  Hey Jave Python Brain Server v2.0")
+    print(f"  Cup Work Python Brain Server v2.0")
     print(f"  Host: {config.HOST}:{config.PORT}")
     print(f"  Vertex AI Mode: {config.USE_VERTEXAI}")
     print(f"  Default Model: {config.DEFAULT_MODEL}")
@@ -21,7 +21,7 @@ def start():
         "backend.server:app",
         host=config.HOST,
         port=config.PORT,
-        reload=False,
+        reload=True,
         log_level=config.LOG_LEVEL.lower(),
     )
 

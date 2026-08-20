@@ -25,7 +25,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Hey Jave Brain Server", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Cup Work Brain Server", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,6 +111,21 @@ async def update_config(data: Dict[str, Any] = Body(...)):
         return {"success": False, "error": str(e)}
 
 # ── User & Device Identity Auto-Provisioning & Profiles ───────────────────────
+@app.get("/api/device/status")
+@app.get("/api/device/check")
+async def check_device_status(deviceId: str):
+    info = memory_manager.is_device_registered(deviceId)
+    if info:
+        return {"registered": True, "exists": True, **info}
+    from backend.storage.sqlite_store import SqliteStore
+    suggested_name = SqliteStore.generate_random_username()
+    return {
+        "registered": False,
+        "exists": False,
+        "deviceId": deviceId,
+        "suggestedUserName": suggested_name,
+    }
+
 @app.post("/api/device/register")
 @app.post("/api/user/register")
 async def register_device_or_user(req: DeviceRegisterRequest):

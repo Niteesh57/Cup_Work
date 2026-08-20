@@ -20,6 +20,9 @@ class MemoryManager:
         self.auto_summarize_threshold = auto_summarize_threshold
 
     # ── Identity & Device Auto-Provisioning ───────────────────────────────────
+    def is_device_registered(self, device_id: str) -> Optional[Dict[str, Any]]:
+        return self.store.is_device_registered(device_id)
+
     def get_or_create_identity(
         self,
         device_id: Optional[str] = None,
