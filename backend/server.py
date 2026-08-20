@@ -36,6 +36,8 @@ app.add_middleware(
 )
 
 
+from backend.voice.tts_streamer import tts_streamer, SUPPORTED_VOICES
+
 # ── Event Bus → Electron WebSocket Forwarder ────────────────────────────────
 async def _forward_event_to_electron(event_type: str, payload: Dict[str, Any]) -> None:
     await electron_bridge.broadcast({"type": event_type, **payload})
@@ -43,7 +45,9 @@ async def _forward_event_to_electron(event_type: str, payload: Dict[str, Any]) -
 
 # Forward only the events the renderer/main process consumes.
 for _event_type in (
-    EventType.TTS_SPEAK,
+    EventType.TTS_STREAM_START,
+    EventType.TTS_STREAM_CHUNK,
+    EventType.TTS_STREAM_END,
     EventType.HITL_QUESTION,
     EventType.COMMENTARY,
     EventType.STATE_CHANGE,
@@ -242,6 +246,124 @@ async def transcribe_voice(req: TranscribeRequest):
         return {"success": False, "error": str(e)}
 
 
+# ── Gemini Streaming Text-To-Speech (TTS) ─────────────────────────────────────
+@app.get("/api/voice/tts-voices")
+async def get_tts_voices():
+    """Returns available Gemini TTS voice profiles."""
+    return {"voices": SUPPORTED_VOICES, "default": "Kore"}
+
+
+@app.post("/api/voice/speak-stream")
+@app.post("/api/voice/speak")
+async def speak_gemini_tts(data: Dict[str, Any] = Body(...)):
+    """Streams spoken audio chunks directly to the device using Gemini TTS."""
+    text = str(data.get("text", "")).strip()
+    voice = str(data.get("voice", "Kore"))
+    task_id = str(data.get("taskId", ""))
+    device_id = data.get("deviceId")
+    style = data.get("style")
+
+    if not text:
+        return {"success": False, "error": "No text provided to speak"}
+
+    try:
+        stream_id = await tts_streamer.speak_text(
+            text=text,
+            voice_name=voice,
+            task_id=task_id,
+            device_id=device_id,
+            style=style,
+        )
+        return {"success": True, "streamId": stream_id}
+    except Exception as e:
+        logger.error(f"Gemini TTS streaming error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/voice/stop-tts")
+async def stop_gemini_tts(data: Dict[str, Any] = Body(...)):
+    task_id = str(data.get("taskId", ""))
+    stream_id = str(data.get("streamId", ""))
+    if stream_id:
+        tts_streamer.cancel_stream(stream_id)
+    elif task_id:
+        tts_streamer.cancel_task_streams(task_id)
+    return {"success": True}
+
+
+# ── Daily Single-Session Chat APIs ──────────────────────────────────────────
+@app.get("/api/session/today")
+async def get_today_session(
+    userId: str = "default",
+    deviceId: Optional[str] = "desktop-main",
+    dateStr: Optional[str] = None,
+):
+    """Returns all chat messages and tool executions for today's session in chronological order."""
+    messages = memory_manager.get_today_chat_messages(
+        user_id=userId,
+        device_id=deviceId,
+        date_str=dateStr,
+    )
+    import time
+    dt = dateStr or time.strftime("%Y-%m-%d")
+    return {
+        "success": True,
+        "date": dt,
+        "userId": userId,
+        "deviceId": deviceId,
+        "count": len(messages),
+        "messages": messages,
+    }
+
+
+@app.post("/api/session/save-message")
+async def save_session_message(data: Dict[str, Any] = Body(...)):
+    """Persists or updates a single chat message in today's daily session store."""
+    msg_id = str(data.get("id") or f"msg-{int(time.time() * 1000)}")
+    user_id = str(data.get("userId") or "default")
+    device_id = str(data.get("deviceId") or "desktop-main")
+    role = str(data.get("role") or "agent").lower()
+    text = data.get("text")
+    is_voice = bool(data.get("isVoice"))
+    status = str(data.get("status") or "done")
+    steps = data.get("steps")
+    duration_ms = int(data.get("durationMs") or 0)
+    output_tokens = data.get("outputTokens")
+    hitl = data.get("hitl")
+    spoke_voice = bool(data.get("spokeVoice"))
+    had_whiteboard = bool(data.get("hadWhiteboard"))
+    date_str = data.get("dateStr")
+    created_at = data.get("createdAt")
+
+    saved_id = memory_manager.save_chat_message(
+        msg_id=msg_id,
+        user_id=user_id,
+        device_id=device_id,
+        role=role,
+        text=text,
+        is_voice=is_voice,
+        status=status,
+        steps=steps,
+        duration_ms=duration_ms,
+        output_tokens=output_tokens,
+        hitl=hitl,
+        spoke_voice=spoke_voice,
+        had_whiteboard=had_whiteboard,
+        date_str=date_str,
+        created_at=created_at,
+    )
+    return {"success": True, "id": saved_id}
+
+
+@app.post("/api/session/clear-today")
+async def clear_today_session(data: Dict[str, Any] = Body(...)):
+    user_id = str(data.get("userId") or "default")
+    device_id = data.get("deviceId")
+    date_str = data.get("dateStr")
+    memory_manager.clear_today_chat_messages(user_id=user_id, device_id=device_id, date_str=date_str)
+    return {"success": True}
+
+
 # ── Full Context, Memory, Preference & Todo APIs ──────────────────────────────
 @app.get("/api/user/context")
 async def get_user_context(userId: str = "default", deviceId: str = "desktop-main"):
@@ -258,6 +380,7 @@ async def get_user_context(userId: str = "default", deviceId: str = "desktop-mai
         "todos": todos,
         "history": history
     }
+
 
 # ── User Preferences APIs (Temporal 'present' vs 'expired') ───────────────────
 @app.get("/api/preferences")

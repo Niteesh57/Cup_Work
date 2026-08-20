@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session, nativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -31,7 +31,7 @@ const envPath = [
 ].find((p) => fs.existsSync(p)) || path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
-import { stopAllTts, speakTextNative } from './tts';
+import { stopAllTts, speakTextNative, streamGeminiTts } from './tts';
 
 const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
 const BACKEND_WS = process.env.PYTHON_BACKEND_WS || `${BACKEND_HTTP.replace(/^http/, 'ws')}/ws`;
@@ -214,12 +214,18 @@ function connectWebSocket() {
           mainWindow?.webContents.send('agent:commentary', msg);
         }
 
-        // Speak TTS requests from the backend
-        if (msg.type === 'TTS_SPEAK') {
-          const text = String(msg.text || '');
-          if (text) {
-            mainWindow?.webContents.send('agent:tts-speak', { text });
-          }
+        // Real-time Gemini TTS Audio Streaming events
+        if (msg.type === 'TTS_STREAM_START') {
+          showScreenGlow('🔊 Cup Work is speaking…', 'speaking');
+          mainWindow?.webContents.send('agent:tts-stream-start', msg);
+        }
+
+        if (msg.type === 'TTS_STREAM_CHUNK') {
+          mainWindow?.webContents.send('agent:tts-stream-chunk', msg);
+        }
+
+        if (msg.type === 'TTS_STREAM_END') {
+          mainWindow?.webContents.send('agent:tts-stream-end', msg);
         }
 
         // Screen glow on task start / steps / completion
@@ -257,6 +263,15 @@ function connectWebSocket() {
 
 // ── Main Electron App Window ──────────────────────────────────────────────────
 function createWindow(): void {
+  const iconPath = [
+    path.join(__dirname, '../build/icon.png'),
+    path.join(process.cwd(), 'build/icon.png'),
+    path.join(__dirname, '../public/icon.png'),
+    path.join(process.cwd(), 'public/icon.png'),
+  ].find(p => fs.existsSync(p)) || path.join(process.cwd(), 'build/icon.png');
+
+  const appIcon = nativeImage.createFromPath(iconPath);
+
   mainWindow = new BrowserWindow({
     width: 820,
     height: 700,
@@ -264,7 +279,7 @@ function createWindow(): void {
     minHeight: 520,
     frame: true,
     title: 'Cup Work — Desktop AI Agent',
-    icon: path.join(__dirname, '../../build/icon.png'),
+    icon: appIcon,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -273,6 +288,10 @@ function createWindow(): void {
     backgroundColor: '#111318',
     show: false,
   });
+
+  if (!appIcon.isEmpty()) {
+    mainWindow.setIcon(appIcon);
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -296,6 +315,10 @@ function createWindow(): void {
 
 // ── App Lifecycle & Clean Exit Handlers ───────────────────────────────────────
 app.whenReady().then(async () => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.cupwork.desktop');
+  }
+
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     if (permission === 'media') {
       callback(true);
@@ -424,15 +447,14 @@ ipcMain.handle('gemini:list-models', async (_event, apiKey?: string) => {
   }
 });
 
-// ── IPC: Native Windows SAPI TTS ─────────────────────────────────────────────
-ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
+// ── IPC: Gemini Streaming TTS ────────────────────────────────────────────────
+ipcMain.handle('voice:speak', async (_event, { text, voice, taskId, style }: { text: string; voice?: string; taskId?: string; style?: string }) => {
   if (!text) return { success: false, error: 'No text to speak' };
   
   try {
     showScreenGlow('🔊 Cup Work is speaking…', 'speaking');
-    await speakTextNative(text);
-    hideScreenGlow();
-    return { success: true };
+    const res = await streamGeminiTts(text, voice || 'Kore', taskId || '', localDeviceId, style);
+    return res;
   } catch (err: unknown) {
     hideScreenGlow();
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -440,8 +462,9 @@ ipcMain.handle('voice:speak', async (_event, { text }: { text: string }) => {
 });
 
 
-ipcMain.handle('voice:stop-speaking', () => {
-  stopAllTts();
+ipcMain.handle('voice:stop-speaking', (_event, taskId?: string) => {
+  stopAllTts(taskId);
+  mainWindow?.webContents.send('agent:tts-stop');
   hideScreenGlow();
   return { success: true };
 });
@@ -687,4 +710,62 @@ ipcMain.handle('agent:close-box', (_event, { id }: { id: string }) => {
   closeHighlightBox(id);
   return { success: true };
 });
+
+// ── Daily Single-Session Chat IPC Handlers ──────────────────────────────────
+ipcMain.handle('session:get-today', async (_event, payload?: { userId?: string; deviceId?: string; dateStr?: string }) => {
+  try {
+    const uid = encodeURIComponent(payload?.userId || 'usr_local');
+    const did = encodeURIComponent(payload?.deviceId || localDeviceId);
+    const dateParam = payload?.dateStr ? `&dateStr=${encodeURIComponent(payload.dateStr)}` : '';
+    const res = await fetch(`${BACKEND_HTTP}/api/session/today?userId=${uid}&deviceId=${did}${dateParam}`);
+    if (!res.ok) {
+      return { success: false, messages: [] };
+    }
+    const data = await res.json();
+    return data;
+  } catch (err: unknown) {
+    console.error('[session:get-today] Error:', err);
+    return { success: false, messages: [] };
+  }
+});
+
+ipcMain.handle('session:save-message', async (_event, messagePayload: Record<string, unknown>) => {
+  try {
+    const payload = {
+      deviceId: localDeviceId,
+      ...messagePayload,
+    };
+    const res = await fetch(`${BACKEND_HTTP}/api/session/save-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      return { success: false };
+    }
+    const data = await res.json();
+    return data;
+  } catch (err: unknown) {
+    console.error('[session:save-message] Error:', err);
+    return { success: false };
+  }
+});
+
+ipcMain.handle('session:clear-today', async (_event, payload?: { userId?: string; deviceId?: string }) => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/session/clear-today`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: payload?.userId || 'usr_local',
+        deviceId: payload?.deviceId || localDeviceId,
+      }),
+    });
+    return (await res.json()) as { success: boolean };
+  } catch (err: unknown) {
+    console.error('[session:clear-today] Error:', err);
+    return { success: false };
+  }
+});
+
 

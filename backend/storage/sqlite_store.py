@@ -116,8 +116,28 @@ class SqliteStore:
                     updated_at INTEGER NOT NULL
                 );
 
+                -- Daily Chat Messages (One session per day, persistent across restarts)
+                CREATE TABLE IF NOT EXISTS daily_chat_messages (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    device_id TEXT NOT NULL,
+                    date_str TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    text TEXT,
+                    is_voice INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'done',
+                    steps_json TEXT,
+                    duration_ms INTEGER DEFAULT 0,
+                    tokens_json TEXT,
+                    hitl_json TEXT,
+                    spoke_voice INTEGER DEFAULT 0,
+                    had_whiteboard INTEGER DEFAULT 0,
+                    created_at INTEGER NOT NULL
+                );
+
                 -- Legacy Compatibility Tables
                 CREATE TABLE IF NOT EXISTS checkpoints (
+
                     task_id TEXT PRIMARY KEY,
                     payload TEXT NOT NULL,
                     updated_at INTEGER NOT NULL
@@ -207,8 +227,10 @@ class SqliteStore:
                 CREATE INDEX IF NOT EXISTS idx_long_memory_user ON long_memory(user_id);
                 CREATE INDEX IF NOT EXISTS idx_logs_task ON execution_logs(task_id);
                 CREATE INDEX IF NOT EXISTS idx_hitl_status ON hitl_queue(status);
+                CREATE INDEX IF NOT EXISTS idx_dcm_user_date ON daily_chat_messages(user_id, device_id, date_str, created_at);
             """)
             conn.commit()
+
 
     # ── User & Device Management & Auto-Provisioning ──────────────────────────
     RANDOM_ADJECTIVES = [
@@ -476,7 +498,147 @@ class SqliteStore:
             rows = cur.fetchall()
             return list(reversed([dict(r) for r in rows]))
 
+    # ── Daily Chat Messages (One Single Persistent Session Per Day) ───────────
+    def save_chat_message(
+        self,
+        msg_id: str,
+        user_id: str,
+        device_id: str,
+        role: str,
+        text: Optional[str] = None,
+        is_voice: bool = False,
+        status: str = "done",
+        steps: Optional[List[Dict[str, Any]]] = None,
+        duration_ms: int = 0,
+        output_tokens: Optional[Dict[str, Any]] = None,
+        hitl: Optional[Dict[str, Any]] = None,
+        spoke_voice: bool = False,
+        had_whiteboard: bool = False,
+        date_str: Optional[str] = None,
+        created_at: Optional[int] = None,
+    ) -> str:
+        now = created_at or int(time.time() * 1000)
+        dt_str = date_str or time.strftime("%Y-%m-%d")
+        self.ensure_device(device_id, user_id)
+
+        steps_json = json.dumps(steps) if steps else None
+        tokens_json = json.dumps(output_tokens) if output_tokens else None
+        hitl_json = json.dumps(hitl) if hitl else None
+
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO daily_chat_messages ("
+                "  id, user_id, device_id, date_str, role, text, is_voice, status, "
+                "  steps_json, duration_ms, tokens_json, hitl_json, spoke_voice, had_whiteboard, created_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "  text = excluded.text, "
+                "  status = excluded.status, "
+                "  steps_json = excluded.steps_json, "
+                "  duration_ms = excluded.duration_ms, "
+                "  tokens_json = excluded.tokens_json, "
+                "  hitl_json = excluded.hitl_json, "
+                "  spoke_voice = excluded.spoke_voice, "
+                "  had_whiteboard = excluded.had_whiteboard",
+                (
+                    msg_id,
+                    user_id,
+                    device_id,
+                    dt_str,
+                    role.lower(),
+                    text,
+                    1 if is_voice else 0,
+                    status,
+                    steps_json,
+                    duration_ms,
+                    tokens_json,
+                    hitl_json,
+                    1 if spoke_voice else 0,
+                    1 if had_whiteboard else 0,
+                    now,
+                ),
+            )
+            conn.commit()
+        return msg_id
+
+    def get_today_chat_messages(
+        self,
+        user_id: str,
+        device_id: Optional[str] = None,
+        date_str: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Returns all structured chat messages for today's session in chronological order."""
+        dt_str = date_str or time.strftime("%Y-%m-%d")
+        with self._get_connection() as conn:
+            if device_id and device_id != "all":
+                cur = conn.execute(
+                    "SELECT * FROM daily_chat_messages WHERE user_id = ? AND device_id = ? AND date_str = ? ORDER BY created_at ASC",
+                    (user_id, device_id, dt_str),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT * FROM daily_chat_messages WHERE user_id = ? AND date_str = ? ORDER BY created_at ASC",
+                    (user_id, dt_str),
+                )
+            rows = cur.fetchall()
+
+        messages = []
+        for r in rows:
+            row_dict = dict(r)
+            steps = None
+            if row_dict.get("steps_json"):
+                try:
+                    steps = json.loads(row_dict["steps_json"])
+                except Exception:
+                    steps = []
+
+            tokens = None
+            if row_dict.get("tokens_json"):
+                try:
+                    tokens = json.loads(row_dict["tokens_json"])
+                except Exception:
+                    tokens = None
+
+            hitl = None
+            if row_dict.get("hitl_json"):
+                try:
+                    hitl = json.loads(row_dict["hitl_json"])
+                except Exception:
+                    hitl = None
+
+            messages.append({
+                "id": row_dict["id"],
+                "role": row_dict["role"],
+                "text": row_dict["text"] or "",
+                "isVoice": bool(row_dict.get("is_voice")),
+                "status": row_dict.get("status") or "done",
+                "steps": steps or [],
+                "durationMs": row_dict.get("duration_ms") or 0,
+                "outputTokens": tokens,
+                "hitl": hitl,
+                "spokeVoice": bool(row_dict.get("spoke_voice")),
+                "hadWhiteboard": bool(row_dict.get("had_whiteboard")),
+                "createdAt": row_dict.get("created_at"),
+            })
+        return messages
+
+    def clear_today_chat_messages(self, user_id: str, device_id: Optional[str] = None, date_str: Optional[str] = None):
+        dt_str = date_str or time.strftime("%Y-%m-%d")
+        with self._get_connection() as conn:
+            if device_id and device_id != "all":
+                conn.execute(
+                    "DELETE FROM daily_chat_messages WHERE user_id = ? AND device_id = ? AND date_str = ?",
+                    (user_id, device_id, dt_str),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM daily_chat_messages WHERE user_id = ? AND date_str = ?",
+                    (user_id, dt_str),
+                )
+            conn.commit()
+
     # ── Long-Term Memory (All Activity Archive across Devices/Dates) ───────────
+
     def add_long_term_activity(self, user_id: str, device_id: str, activity_type: str, title: str, content: str, details: Optional[Dict[str, Any]] = None, importance: float = 1.0, date_str: Optional[str] = None, timestamp_ms: Optional[int] = None) -> str:
         activity_id = f"ltm-{uuid.uuid4().hex[:12]}"
         now = timestamp_ms or int(time.time() * 1000)

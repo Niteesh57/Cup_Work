@@ -150,6 +150,59 @@ class MemoryManager:
     def get_recent_history(self, user_id: str, device_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
         return self.store.get_recent_short_term(user_id=user_id, device_id=device_id, limit=limit)
 
+    def save_chat_message(
+        self,
+        msg_id: str,
+        user_id: str,
+        device_id: str,
+        role: str,
+        text: Optional[str] = None,
+        is_voice: bool = False,
+        status: str = "done",
+        steps: Optional[List[Dict[str, Any]]] = None,
+        duration_ms: int = 0,
+        output_tokens: Optional[Dict[str, Any]] = None,
+        hitl: Optional[Dict[str, Any]] = None,
+        spoke_voice: bool = False,
+        had_whiteboard: bool = False,
+        date_str: Optional[str] = None,
+        created_at: Optional[int] = None,
+    ) -> str:
+        return self.store.save_chat_message(
+            msg_id=msg_id,
+            user_id=user_id,
+            device_id=device_id,
+            role=role,
+            text=text,
+            is_voice=is_voice,
+            status=status,
+            steps=steps,
+            duration_ms=duration_ms,
+            output_tokens=output_tokens,
+            hitl=hitl,
+            spoke_voice=spoke_voice,
+            had_whiteboard=had_whiteboard,
+            date_str=date_str,
+            created_at=created_at,
+        )
+
+    def get_today_chat_messages(
+        self,
+        user_id: str,
+        device_id: Optional[str] = None,
+        date_str: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        return self.store.get_today_chat_messages(user_id=user_id, device_id=device_id, date_str=date_str)
+
+    def clear_today_chat_messages(
+        self,
+        user_id: str,
+        device_id: Optional[str] = None,
+        date_str: Optional[str] = None,
+    ) -> None:
+        self.store.clear_today_chat_messages(user_id=user_id, device_id=device_id, date_str=date_str)
+
+
     # ── User Preferences & Likings (Temporal 'present' vs 'expired') ──────────
     def set_user_preference(
         self,

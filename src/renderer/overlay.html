@@ -988,11 +988,22 @@
       wbGroupNodes.appendChild(g);
     }
 
+    const renderedConnectionKeys = new Set();
+
     // 4. Render Connecting Arrows with Parallel Collision Avoidance
     function renderWhiteboardConnection(conn) {
       const fromNode = nodeRegistry.get(conn.from);
       const toNode   = nodeRegistry.get(conn.to);
       if (!fromNode || !toNode) return;
+
+      const labelText = String(conn.label || '').trim();
+      const connSignature = `${conn.from}->${conn.to}::${labelText}`;
+
+      // Prevent duplicate arrows from stacking if already rendered in a prior step
+      if (renderedConnectionKeys.has(connSignature)) {
+        return;
+      }
+      renderedConnectionKeys.add(connSignature);
 
       const pairKey = `${conn.from}->${conn.to}`;
       const pairIndex = connectionCounts.get(pairKey) || 0;
@@ -1014,7 +1025,8 @@
       let endY   = toNode.cy;
 
       // Port offsets for parallel arrows
-      const portOffsetY = pairIndex === 0 ? 0 : (pairIndex % 2 === 1 ? -20 : 20);
+      const portOffsetY = pairIndex === 0 ? 0 : (pairIndex % 2 === 1 ? -24 : 24);
+
 
       if (Math.abs(endX - startX) > Math.abs(endY - startY)) {
         if (endX > startX) {
@@ -1168,12 +1180,17 @@
         wbClarifyCont.innerHTML = '';
         nodeRegistry.clear();
         connectionCounts.clear();
+        renderedConnectionKeys.clear();
       }
 
-      // Add structured card to left sidebar
-      if (data.stepNumber !== undefined) {
-        addStepCard(data.stepNumber, data.totalSteps, data.stepLabel, data.notes);
-      }
+      // Add structured card to left sidebar (supports both camelCase and snake_case)
+      const stepNum = data.stepNumber !== undefined ? data.stepNumber : (data.step_number !== undefined ? data.step_number : 1);
+      const totalSteps = data.totalSteps || data.total_steps || stepNum;
+      const stepLabel = data.stepLabel || data.step_label || data.title || `Step ${stepNum}`;
+      const notes = data.notes || data.bullet_points || data.bullets || [];
+
+      addStepCard(stepNum, totalSteps, stepLabel, notes);
+
 
       // Render Nodes
       let targetCenterX = 0;
@@ -1284,6 +1301,7 @@
       wbClarifyCont.innerHTML = '';
       nodeRegistry.clear();
       connectionCounts.clear();
+      renderedConnectionKeys.clear();
       ipcRenderer.invoke('agent:close-whiteboard');
     }
 
@@ -1294,7 +1312,9 @@
       wbClarifyCont.innerHTML = '';
       nodeRegistry.clear();
       connectionCounts.clear();
+      renderedConnectionKeys.clear();
     }
+
 
     wbCloseBtn.addEventListener('click', closeWhiteboard);
 

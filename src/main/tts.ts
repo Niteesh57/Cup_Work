@@ -1,54 +1,68 @@
-import { ChildProcess, execFile } from 'child_process';
+/**
+ * Gemini TTS Bridge Controller
+ *
+ * Replaces legacy Windows SAPI / PowerShell SpeechSynthesizer with real-time
+ * streaming Gemini TTS (24kHz 16-bit PCM).
+ */
 
-let activeTtsProcess: ChildProcess | null = null;
+const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
 
 /**
- * Stops any actively running TTS speech process immediately.
+ * Signals backend and frontend to stop any actively playing audio stream immediately.
  */
-export function stopAllTts(): void {
-  if (activeTtsProcess) {
-    try {
-      activeTtsProcess.kill();
-    } catch (e) {
-      console.error('[TTS] Error stopping TTS process:', e);
+export function stopAllTts(taskId?: string): void {
+  try {
+    fetch(`${BACKEND_HTTP}/api/voice/stop-tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: taskId || '' }),
+    }).catch(() => {});
+  } catch {}
+}
+
+/**
+ * Triggers streaming Gemini TTS for a given text.
+ */
+export async function streamGeminiTts(
+  text: string,
+  voice: string = 'Kore',
+  taskId: string = '',
+  deviceId?: string,
+  style?: string
+): Promise<{ success: boolean; streamId?: string; error?: string }> {
+  if (!text || !text.trim()) {
+    return { success: true };
+  }
+
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/voice/speak-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        voice,
+        taskId,
+        deviceId,
+        style,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`TTS server returned HTTP ${res.status}`);
     }
-    activeTtsProcess = null;
+
+    const data = (await res.json()) as { success: boolean; streamId?: string; error?: string };
+    return data;
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error('[GeminiTTS] Speech streaming request error:', errMsg);
+    return { success: false, error: errMsg };
   }
 }
 
 /**
- * Speaks text using Windows SAPI SpeechSynthesizer.
- * Guarantees only one voice speaks at a time by terminating any prior voice.
+ * Compatibility helper replacing legacy speakTextNative with Gemini TTS streaming.
  */
-export function speakTextNative(text: string): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (!text || !text.trim()) {
-      return resolve();
-    }
-    const cleanText = text
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/`[^`]+`/g, '')
-      .replace(/#{1,6}\s+/g, '')
-      .replace(/[*_~|>#\-=]/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-
-    if (!cleanText) return resolve();
-
-    // Kill any active voice first to guarantee no overlapping speech
-    stopAllTts();
-
-    const script = `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 0; $synth.Speak(${JSON.stringify(cleanText)})`;
-    const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-
-    activeTtsProcess = execFile(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
-      { maxBuffer: 1024 * 1024 },
-      () => {
-        activeTtsProcess = null;
-        resolve();
-      }
-    );
-  });
+export async function speakTextNative(text: string, voice = 'Kore', taskId = ''): Promise<void> {
+  await streamGeminiTts(text, voice, taskId);
 }

@@ -5,25 +5,27 @@ from typing import Any, Dict, Optional
 
 from backend.events.event_bus import EventType, event_bus
 
-# Direct mapping for high-level events.
+from backend.voice.tts_streamer import tts_streamer
+
+# Direct mapping for high-level events with expressive Gemini audio tags.
 EVENT_COMMENTARY: Dict[str, str] = {
-    EventType.AGENT_STARTED.value: "Okay, I'll take care of that.",
-    EventType.OBSERVING_SCREEN.value: "Let me see what's currently open.",
-    EventType.PLANNING.value: "Working out the best approach.",
-    EventType.TASK_COMPLETED.value: "Done. {result}",
-    EventType.TASK_FAILED.value: "I wasn't able to complete that. {reason}",
+    EventType.AGENT_STARTED.value: "[cheerfully] Okay, I'll take care of that.",
+    EventType.OBSERVING_SCREEN.value: "[curious] Let me see what's currently open.",
+    EventType.PLANNING.value: "[thoughtful] Working out the best approach.",
+    EventType.TASK_COMPLETED.value: "[excitedly] Done! {result}",
+    EventType.TASK_FAILED.value: "[sighs] I wasn't able to complete that. {reason}",
 }
 
 # Low-level tool events that should be grouped rather than spoken individually.
 NAVIGATION_TOOLS = {"mouse_move", "mouse_click", "keyboard_type", "keyboard_key", "press_hotkey", "scroll", "drag_drop"}
-NAVIGATION_COMMENTARY = "Navigating on screen."
+NAVIGATION_COMMENTARY = "[calmly] Navigating on screen."
 
 
 class CommentaryTranslator:
     """Translates raw agent events into short, natural spoken sentences.
 
     High-level events use ``EVENT_COMMENTARY``. Navigation tool events are
-    grouped: only the first in a burst emits ``TTS_SPEAK``, avoiding a string
+    grouped: only the first in a burst streams Gemini TTS, avoiding a string
     of "navigating... navigating... navigating..." for one click.
     """
 
@@ -52,8 +54,14 @@ class CommentaryTranslator:
         if "{reason}" in text:
             text = text.replace("{reason}", str(payload.get("reason", "an error occurred")))
 
-        await event_bus.publish(EventType.COMMENTARY, {"text": text})
-        await event_bus.publish(EventType.TTS_SPEAK, {"text": text})
+        task_id = str(payload.get("taskId", ""))
+        device_id = payload.get("deviceId")
+        await event_bus.publish(EventType.COMMENTARY, {"text": text, "taskId": task_id, "deviceId": device_id})
+
+        # Only speak in-flight planning/observing status updates via TTS.
+        # Final task completion text is spoken once directly by the executor / UI to prevent double-voice overlap.
+        if event_type in (EventType.AGENT_STARTED.value, EventType.OBSERVING_SCREEN.value, EventType.PLANNING.value):
+            await event_bus.publish(EventType.TTS_SPEAK, {"text": text, "taskId": task_id, "deviceId": device_id})
 
     async def _on_tool_executing(self, event_type: str, payload: Dict[str, Any]) -> None:
         tool = str(payload.get("tool", "")).lower()
@@ -61,8 +69,10 @@ class CommentaryTranslator:
             if self._last_navigation_spoken:
                 return
             self._last_navigation_spoken = True
-            await event_bus.publish(EventType.COMMENTARY, {"text": NAVIGATION_COMMENTARY})
-            await event_bus.publish(EventType.TTS_SPEAK, {"text": NAVIGATION_COMMENTARY})
+            task_id = str(payload.get("taskId", ""))
+            device_id = payload.get("deviceId")
+            await event_bus.publish(EventType.COMMENTARY, {"text": NAVIGATION_COMMENTARY, "taskId": task_id, "deviceId": device_id})
+            await event_bus.publish(EventType.TTS_SPEAK, {"text": NAVIGATION_COMMENTARY, "taskId": task_id, "deviceId": device_id})
 
     async def _reset_burst(self, event_type: str, payload: Dict[str, Any]) -> None:
         self._last_navigation_spoken = False

@@ -14,7 +14,7 @@ import {
   clearWhiteboard,
   closeWhiteboard
 } from '../overlayWindow';
-import { speakTextNative, stopAllTts } from '../tts';
+import { speakTextNative, stopAllTts, streamGeminiTts } from '../tts';
 
 
 export class UiaBridge {
@@ -431,24 +431,13 @@ export class UiaBridge {
   }
 
   /**
-   * Speaks text asynchronously via Windows SAPI without blocking tool execution.
+   * Speaks text asynchronously via streaming Gemini TTS without blocking tool execution.
    */
   public async speakSync(text: string): Promise<{ success: boolean; message?: string }> {
-    return new Promise((resolve) => {
-      try {
-        const { execFile } = require('child_process') as typeof import('child_process');
-        const script = `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SpeakAsync(${JSON.stringify(text)}) | Out-Null`;
-        const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-        execFile(
-          'powershell.exe',
-          ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
-          { maxBuffer: 1024 * 1024 },
-          () => {}
-        );
-      } catch {}
-      // Resolve immediately so speech does not block desktop automation
-      resolve({ success: true, message: 'Spoke commentary' });
-    });
+    if (text && text.trim()) {
+      void streamGeminiTts(text);
+    }
+    return { success: true, message: 'Initiated Gemini TTS stream' };
   }
 
   /**
@@ -695,28 +684,42 @@ export class UiaBridge {
       case 'draw_whiteboard_lecture': {
         const conceptTitle = String(args.conceptTitle || 'Concept');
         const steps = Array.isArray(args.steps) ? (args.steps as Array<Record<string, unknown>>) : [];
-        const delaySec = typeof args.stepDelaySeconds === 'number' ? args.stepDelaySeconds : 1.0;
+        const delaySec = typeof args.stepDelaySeconds === 'number' ? args.stepDelaySeconds : 1.5;
 
         for (let i = 0; i < steps.length; i++) {
           const stepData = { ...steps[i] };
           stepData.conceptTitle = stepData.conceptTitle || conceptTitle;
-          stepData.totalSteps = stepData.totalSteps || steps.length;
+          stepData.totalSteps = stepData.totalSteps || stepData.total_steps || steps.length;
+          stepData.stepNumber = stepData.stepNumber !== undefined ? stepData.stepNumber : (stepData.step_number !== undefined ? stepData.step_number : (i + 1));
+          stepData.stepLabel = stepData.stepLabel || stepData.step_label || stepData.title || `Stage ${i + 1}`;
+          stepData.notes = stepData.notes || stepData.bullet_points || stepData.bullets || [];
           stepData.appendMode = i > 0;
 
+          // 1. Render step elements and left sidebar card
           showWhiteboardStep(stepData);
 
+          // 2. Speak narration text via Google Gemini TTS
           const narration = String(stepData.narration || '');
           if (narration.trim()) {
             await speakTextNative(narration);
+
+            // Natural speech duration pacing based on word count + buffer
+            const wordCount = narration.trim().split(/\s+/).length;
+            const speechDurationMs = Math.max(3500, Math.round((wordCount / 2.2) * 1000) + 1500);
+            await new Promise((r) => setTimeout(r, speechDurationMs));
+          } else {
+            await new Promise((r) => setTimeout(r, 2500));
           }
 
+          // 3. Pause between stages before gliding camera to next step
           if (i < steps.length - 1) {
-            await new Promise((r) => setTimeout(r, Math.max(200, delaySec * 1000)));
+            await new Promise((r) => setTimeout(r, Math.max(500, delaySec * 1000)));
           }
         }
 
         return { success: true, message: `Completed ${steps.length}-step whiteboard lecture: ${conceptTitle}` };
       }
+
       case 'draw_whiteboard_step': {
         showWhiteboardStep(args);
         const narration = String(args.narration || '');

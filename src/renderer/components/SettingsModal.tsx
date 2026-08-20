@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, User, Lock, Laptop, Check, X, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
+import { User, Lock, Laptop, Check, X, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
+import appIcon from '../assets/icon.png';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -79,8 +80,8 @@ export function SettingsModal({
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
-              <Settings size={17} />
+            <div className="w-8 h-8 rounded-xl bg-slate-900/5 flex items-center justify-center shadow-xs overflow-hidden p-1">
+              <img src={appIcon} alt="Cup Work" className="w-full h-full object-contain" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-900 leading-tight">Settings & Profile</h2>
@@ -179,6 +180,46 @@ export function SettingsModal({
               </button>
             </div>
           </form>
+
+          {/* Divider */}
+          <div className="border-t border-slate-100 pt-3" />
+
+          {/* Gemini Streaming TTS Voice Configuration */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Sparkles size={12} className="text-primary" />
+                Gemini TTS Streaming Voice
+              </span>
+              <span className="badge badge-primary badge-xs text-[10px] font-semibold text-white">
+                Gemini 3.1 TTS
+              </span>
+            </div>
+
+            <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-slate-200/70 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 font-semibold">Active Model:</span>
+                <span className="font-mono text-[11px] text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-md">
+                  gemini-3.1-flash-tts-preview
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 font-semibold">Default Voice Talent:</span>
+                <span className="font-semibold text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                  Kore (Firm & Confident)
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 font-semibold">Audio Output:</span>
+                <span className="text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                  24kHz 16-bit PCM (Streaming)
+                </span>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 italic leading-tight">
+              🎙️ SAPI and device TTS have been removed. All spoken responses stream directly from Gemini TTS with rich directorial style and emotional audio tags.
+            </p>
+          </div>
 
           {/* Divider */}
           <div className="border-t border-slate-100 pt-3" />

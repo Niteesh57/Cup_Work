@@ -5,11 +5,14 @@ import { Loader2, Mic, MicOff, X, Pause, Play, Square, Settings } from 'lucide-r
 import { CommentaryBanner } from './components/CommentaryBanner';
 import { MarkdownView } from './components/MarkdownView';
 import { ToolCallTimeline } from './components/ToolCallTimeline';
-import { CoffeeCup, StaticCupIcon } from './components/CoffeeCup';
+import { CoffeeCup } from './components/CoffeeCup';
 import { SettingsModal } from './components/SettingsModal';
 import { DeviceRegistrationScreen } from './components/DeviceRegistrationScreen';
+import appIcon from './assets/icon.png';
 
 
+
+import { GeminiAudioStreamPlayer, AudioStreamEvent } from './audio/geminiAudioPlayer';
 
 /* ── Safe IPC accessor (lazy — avoids module-level crash) ────── */
 function ipc() {
@@ -26,40 +29,14 @@ function ipc() {
   }
 }
 
-/* ── Speak text via native Windows SAPI TTS (main process) ─────── */
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, '')        // remove code blocks
-    .replace(/`[^`]+`/g, '')               // remove inline code
-    .replace(/#{1,6}\s+/g, '')             // remove headings
-    .replace(/\*\*([^*]+)\*\*/g, '$1')     // bold → plain
-    .replace(/\*([^*]+)\*/g, '$1')         // italic → plain
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → label
-    .replace(/[*_~|>#\-=]/g, '')           // remaining markdown chars
-    .replace(/\s{2,}/g, ' ')              // collapse whitespace
-    .trim();
-}
-
-async function speak(text: string): Promise<void> {
-  const plain = stripMarkdown(text).slice(0, 600); // cap at 600 chars for TTS
-  if (!plain) return;
-  console.log('[TTS] Speaking:', plain.slice(0, 80) + '…');
+/* ── Speak text via streaming Gemini TTS (main process & backend) ─────── */
+async function speak(text: string, voice = 'Kore', taskId = ''): Promise<void> {
+  if (!text || !text.trim()) return;
+  console.log('[GeminiTTS] Requesting stream:', text.slice(0, 80) + '…');
   try {
-    const res = await ipc()?.invoke('voice:speak', { text: plain }) as { success?: boolean; error?: string } | undefined;
-    if (res && res.success === false && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(plain);
-      utterance.rate = 1.0;
-      window.speechSynthesis.speak(utterance);
-    }
+    await ipc()?.invoke('voice:speak', { text, voice, taskId });
   } catch (err) {
-    console.error('[App] Main TTS failed, fallback to Web Speech API:', err);
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(plain);
-      utterance.rate = 1.0;
-      window.speechSynthesis.speak(utterance);
-    }
+    console.error('[App] Gemini TTS request failed:', err);
   }
 }
 
@@ -127,6 +104,25 @@ export default function App() {
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  /* ── Load Today's Daily Chat Session from SQLite ─────────────────── */
+  const loadTodaySession = useCallback(async (userId?: string, deviceId?: string) => {
+    try {
+      const targetUserId = userId || userIdentity.userId || 'usr_local';
+      const targetDeviceId = deviceId || userIdentity.deviceId || 'desktop-main';
+      const res = (await ipc()?.invoke('session:get-today', {
+        userId: targetUserId,
+        deviceId: targetDeviceId,
+      })) as { success: boolean; messages: ChatMessage[]; date?: string } | undefined;
+
+      if (res && res.success && Array.isArray(res.messages) && res.messages.length > 0) {
+        console.log(`[App] Loaded ${res.messages.length} messages from today's session (${res.date})`);
+        setMessages(res.messages);
+      }
+    } catch (err) {
+      console.error('[App] Failed to load today session:', err);
+    }
+  }, [userIdentity.userId, userIdentity.deviceId]);
+
   /* ── Multi-User Identity Fetch & Update ─────────────────────────── */
   const fetchUserProfile = useCallback(async () => {
     try {
@@ -144,11 +140,12 @@ export default function App() {
           deviceId: res.deviceId,
           deviceName: res.deviceName,
         });
+        loadTodaySession(res.userId, res.deviceId);
       }
     } catch (err) {
       console.error('[App] Failed to fetch user profile:', err);
     }
-  }, []);
+  }, [loadTodaySession]);
 
   const checkDeviceRegistration = useCallback(async () => {
     try {
@@ -171,18 +168,22 @@ export default function App() {
         }));
         setSuggestedUserName(res.suggestedUserName || '');
         setIsDeviceRegistered(res.registered);
+        loadTodaySession(res.userId, res.deviceId);
         if (res.registered) {
           fetchUserProfile();
         }
       } else {
         setIsDeviceRegistered(true);
         fetchUserProfile();
+        loadTodaySession();
       }
     } catch (err) {
       console.error('[App] Failed to check device status:', err);
       setIsDeviceRegistered(true);
+      loadTodaySession();
     }
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile, loadTodaySession]);
+
 
   const handleRegisterDevice = useCallback(async (customName: string): Promise<boolean> => {
     try {
@@ -237,8 +238,10 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<string>('');
   const engineRef = useRef<VoiceEngine | null>(null);
+  const audioPlayerRef = useRef<GeminiAudioStreamPlayer | null>(null);
   const lastUtteranceRef = useRef<{ wavBase64: string; mimeType: string } | null>(null);
   const voiceActiveRef = useRef(false);
+  voiceActiveRef.current = recording;
   const sendPromptRef = useRef<(input: string | ExecuteOptions) => Promise<void>>();
 
   const isBusy = status === 'analyzing' || status === 'executing';
@@ -259,6 +262,33 @@ export default function App() {
     }
     if (message !== undefined) setVoiceStatus(message);
   }, []);
+
+  /* ── Initialize Gemini TTS Streaming Web Audio Player ──────────── */
+  useEffect(() => {
+    const player = new GeminiAudioStreamPlayer((playing) => {
+      setIsSpeaking(playing);
+      if (playing) {
+        engineRef.current?.setMuted(true);
+        engineRef.current?.deactivate();
+        showBorderGlow(true, '🔊 Cup Work is speaking…', 'speaking');
+      } else {
+        engineRef.current?.setMuted(false);
+        if (voiceActiveRef.current && !inFlightRef.current && engineRef.current) {
+          engineRef.current.activate();
+          setRecording(true);
+          setVoiceStatus('Listening for voice…');
+          showBorderGlow(false, '');
+        } else {
+          showBorderGlow(false, '');
+        }
+      }
+    });
+    audioPlayerRef.current = player;
+
+    return () => {
+      player.stop();
+    };
+  }, [showBorderGlow]);
 
   useEffect(() => {
     const engine = new VoiceEngine({
@@ -430,9 +460,27 @@ export default function App() {
       }
     };
 
-    const onTtsSpeak = (_: unknown, data: unknown) => {
-      const c = data as { text: string };
-      if (c.text) void speak(c.text);
+    const onTtsStreamStart = (_: unknown, data: unknown) => {
+      const st = data as { streamId?: string };
+      if (st?.streamId) {
+        audioPlayerRef.current?.handleStreamStart(st.streamId);
+      }
+    };
+
+    const onTtsStreamChunk = (_: unknown, data: unknown) => {
+      const ch = data as AudioStreamEvent;
+      if (ch) {
+        audioPlayerRef.current?.handleStreamChunk(ch);
+      }
+    };
+
+    const onTtsStreamEnd = (_: unknown, data: unknown) => {
+      const st = data as { streamId?: string };
+      audioPlayerRef.current?.handleStreamEnd(st?.streamId);
+    };
+
+    const onTtsStop = () => {
+      audioPlayerRef.current?.stop();
     };
 
     const onHitlQuestion = (_: unknown, data: unknown) => {
@@ -478,7 +526,10 @@ export default function App() {
     renderer.on('agent:state-change', onStateChange);
     renderer.on('agent:commentary', onCommentary);
     renderer.on('agent:live-action', onLiveAction);
-    renderer.on('agent:tts-speak', onTtsSpeak);
+    renderer.on('agent:tts-stream-start', onTtsStreamStart);
+    renderer.on('agent:tts-stream-chunk', onTtsStreamChunk);
+    renderer.on('agent:tts-stream-end', onTtsStreamEnd);
+    renderer.on('agent:tts-stop', onTtsStop);
     renderer.on('agent:hitl-question', onHitlQuestion);
 
     return () => {
@@ -487,7 +538,10 @@ export default function App() {
       renderer.removeAllListeners('agent:state-change');
       renderer.removeAllListeners('agent:commentary');
       renderer.removeAllListeners('agent:live-action');
-      renderer.removeAllListeners('agent:tts-speak');
+      renderer.removeAllListeners('agent:tts-stream-start');
+      renderer.removeAllListeners('agent:tts-stream-chunk');
+      renderer.removeAllListeners('agent:tts-stream-end');
+      renderer.removeAllListeners('agent:tts-stop');
       renderer.removeAllListeners('agent:hitl-question');
     };
   }, []);
@@ -519,11 +573,9 @@ export default function App() {
 
   const handleCancel = useCallback(async (taskId: string) => {
     try {
+      audioPlayerRef.current?.stop();
       await ipc()?.invoke('task:cancel', taskId);
-      await ipc()?.invoke('voice:stop-speaking');
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      await ipc()?.invoke('voice:stop-speaking', taskId);
     } catch (err) {
       console.error('[App] Error cancelling task:', err);
     }
@@ -553,6 +605,36 @@ export default function App() {
     }
   }, [showBorderGlow]);
 
+  const handleSelectHitlOption = useCallback(async (hitlId: string, taskId: string, option: string) => {
+    try {
+      await ipc()?.invoke('agent:human-response', { id: hitlId, taskId, answer: option });
+      setMessages(prev =>
+        prev.map(m =>
+          m.hitl?.id === hitlId
+            ? {
+                ...m,
+                hitl: {
+                  ...m.hitl,
+                  selectedAnswer: option,
+                },
+              }
+            : m
+        )
+      );
+      void ipc()?.invoke('session:save-message', {
+        id: `hitl-${hitlId}`,
+        role: 'agent',
+        status: 'done',
+        text: `Answered: ${option}`,
+        hitl: { id: hitlId, taskId, question: '', options: [], selectedAnswer: option },
+        userId: userIdentity.userId || 'usr_local',
+        deviceId: userIdentity.deviceId || 'desktop-main',
+      });
+    } catch (err) {
+      console.error('[App] Failed to send HITL option response:', err);
+    }
+  }, [userIdentity.userId, userIdentity.deviceId]);
+
   const sendPrompt = useCallback(async (input: string | ExecuteOptions) => {
     const opts: ExecuteOptions = typeof input === 'string' ? { prompt: input } : input;
     const trimmed = opts.prompt?.trim() || '';
@@ -572,11 +654,20 @@ export default function App() {
     const currentTaskId = `task-${Date.now()}`;
 
     setActiveTaskId(currentTaskId);
+    const userMsg: ChatMessage = { id: userMsgId, role: 'user', text: trimmed || '🎤 Spoken Voice Input', isVoice: opts.isVoice };
     setMessages(prev => [
       ...prev,
-      { id: userMsgId, role: 'user', text: trimmed || '🎤 Spoken Voice Input', isVoice: opts.isVoice },
+      userMsg,
       { id: agentMsgId, role: 'agent', status: 'thinking', steps: [] },
     ]);
+
+    // Persist user prompt in SQLite daily session
+    void ipc()?.invoke('session:save-message', {
+      ...userMsg,
+      userId: userIdentity.userId || 'usr_local',
+      deviceId: userIdentity.deviceId || 'desktop-main',
+    });
+
     setStatus('executing');
     setExecutorState('observing');
     lastUtteranceRef.current = null;
@@ -617,14 +708,7 @@ export default function App() {
       let spokeVoiceOutput = false;
       if (response.success && response.message && !hadWhiteboardTool) {
         spokeVoiceOutput = true;
-        setIsSpeaking(true);
-        engineRef.current?.setMuted(true);
-        engineRef.current?.deactivate();
-        showBorderGlow(true, '🔊 Cup Work is speaking…', 'speaking');
-        await speak(response.message);
-        setIsSpeaking(false);
-        await new Promise(r => setTimeout(r, 600));
-        engineRef.current?.setMuted(false);
+        await speak(response.message, 'Kore', currentTaskId);
       }
 
       const durationMs = Date.now() - startTime;
@@ -632,41 +716,51 @@ export default function App() {
       const promptTokens = Math.round((trimmed.length || 20) * 1.3 + stepsCount * 380 + 320);
       const completionTokens = Math.round((response.message?.length || 50) * 0.75 + stepsCount * 120);
 
-      setMessages(prev => prev.map(m =>
-        m.id === agentMsgId
-          ? {
-              ...m,
-              text: response.message,
-              status: response.success ? 'done' : 'error',
-              steps: response.steps && response.steps.length > 0 ? response.steps : m.steps,
-              spokeVoice: spokeVoiceOutput,
-              hadWhiteboard: !!hadWhiteboardTool,
-              durationMs,
-              outputTokens: {
-                prompt: promptTokens,
-                completion: completionTokens,
-                total: promptTokens + completionTokens,
-              },
-            }
-          : m
-      ));
+      const finalAgentMsg: ChatMessage = {
+        id: agentMsgId,
+        role: 'agent',
+        text: response.message,
+        status: response.success ? 'done' : 'error',
+        steps: response.steps && response.steps.length > 0 ? response.steps : [],
+        spokeVoice: spokeVoiceOutput,
+        hadWhiteboard: !!hadWhiteboardTool,
+        durationMs,
+        outputTokens: {
+          prompt: promptTokens,
+          completion: completionTokens,
+          total: promptTokens + completionTokens,
+        },
+      };
+
+      setMessages(prev => prev.map(m => m.id === agentMsgId ? finalAgentMsg : m));
       setStatus(response.success ? 'completed' : 'error');
+
+      // Persist completed agent message in SQLite daily session
+      void ipc()?.invoke('session:save-message', {
+        ...finalAgentMsg,
+        userId: userIdentity.userId || 'usr_local',
+        deviceId: userIdentity.deviceId || 'desktop-main',
+      });
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[App] execute-prompt failed:', msg);
       const durationMs = Date.now() - startTime;
-      setMessages(prev => prev.map(m =>
-        m.id === agentMsgId
-          ? {
-              ...m,
-              text: `Error: ${msg}`,
-              status: 'error',
-              durationMs,
-            }
-          : m
-      ));
+      const errorAgentMsg: ChatMessage = {
+        id: agentMsgId,
+        role: 'agent',
+        text: `Error: ${msg}`,
+        status: 'error',
+        durationMs,
+      };
+      setMessages(prev => prev.map(m => m.id === agentMsgId ? errorAgentMsg : m));
       setStatus('error');
+
+      void ipc()?.invoke('session:save-message', {
+        ...errorAgentMsg,
+        userId: userIdentity.userId || 'usr_local',
+        deviceId: userIdentity.deviceId || 'desktop-main',
+      });
     } finally {
       inFlightRef.current = false;
       setStatus('idle');
@@ -686,7 +780,7 @@ export default function App() {
         showBorderGlow(false, '');
       }
     }
-  }, [config.geminiModel, showBorderGlow]);
+  }, [config.geminiModel, showBorderGlow, userIdentity]);
 
   sendPromptRef.current = sendPrompt;
 
@@ -700,32 +794,8 @@ export default function App() {
     return config.geminiModel || 'gemini-2.5-flash';
   };
 
-  const handleSelectHitlOption = useCallback(async (hitlId: string, taskId: string, option: string) => {
-    const renderer = ipc();
-    if (!renderer) return;
-
-    setMessages(prev =>
-      prev.map(m =>
-        m.hitl && m.hitl.id === hitlId
-          ? {
-              ...m,
-              hitl: {
-                ...m.hitl,
-                selectedAnswer: option,
-              },
-            }
-          : m
-      )
-    );
-
-    try {
-      await renderer.invoke('agent:human-response', { id: hitlId, taskId, answer: option });
-    } catch (err) {
-      console.error('[App] Failed to send HITL response:', err);
-    }
-  }, []);
-
   const dotClass = isAnimationActive ? 'busy' : status === 'error' ? 'error' : '';
+
 
 
   return (
@@ -744,10 +814,12 @@ export default function App() {
         <div className="app">
           {/* ── Top Bar ── */}
           <header className="topbar">
-          <div className="topbar-left">
-            <div className="logo-icon">
-              <StaticCupIcon size={18} />
-            </div>
+          <div className="topbar-left flex items-center gap-2">
+            <img
+              src={appIcon}
+              alt="Cup Work"
+              className="w-6 h-6 object-contain rounded-md shadow-2xs"
+            />
             <span className="logo-name">Cup Work</span>
           </div>
 
@@ -868,18 +940,29 @@ export default function App() {
               )}
             </div>
           ) : (
-            messages.map(msg =>
-              msg.role === 'user'
-                ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} />
-                : <AgentMessage
-                    key={msg.id}
-                    msg={msg}
-                    isPaused={executorState === 'paused'}
-                    onSelectHitlOption={handleSelectHitlOption}
-                  />
-            )
-
+            <>
+              <div className="flex items-center justify-between px-3 py-1.5 mb-3 bg-base-200/50 backdrop-blur rounded-xl border border-base-300/40 text-[11px] font-medium text-slate-500 shadow-2xs">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" />
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">Today's Session</span>
+                </span>
+                <span className="font-mono text-[10px] text-slate-400">
+                  {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+              {messages.map(msg =>
+                msg.role === 'user'
+                  ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} />
+                  : <AgentMessage
+                      key={msg.id}
+                      msg={msg}
+                      isPaused={executorState === 'paused'}
+                      onSelectHitlOption={handleSelectHitlOption}
+                    />
+              )}
+            </>
           )}
+
           <div ref={chatEndRef} />
           <CommentaryBanner text={commentary} />
         </main>
@@ -1038,10 +1121,10 @@ function AgentMessage({
 
   return (
     <div className="message-row">
-      <div className="msg-avatar agent">
+      <div className="msg-avatar agent flex items-center justify-center overflow-hidden">
         {isThinking
           ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-          : <StaticCupIcon size={14} />
+          : <img src={appIcon} alt="Cup Work" className="w-3.5 h-3.5 object-contain" />
         }
       </div>
       <div className="msg-body w-full">

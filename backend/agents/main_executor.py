@@ -38,7 +38,7 @@ class AgentState(str, Enum):
     FAILED = "failed"
 
 
-EXECUTOR_SYSTEM_INSTRUCTION = """You are Hey Jave's Main Desktop Executor, an autonomous Windows automation agent.
+EXECUTOR_SYSTEM_INSTRUCTION = """You are Cup Work's Main Desktop Executor, an autonomous Windows automation agent.
 
 Your goal is to execute the user's task on Windows end-to-end:
 1. Analyze the user goal and the provided screen observation (screenshot, open windows, interactive UI elements).
@@ -436,7 +436,9 @@ class MainExecutorAgent:
         await event_bus.publish(EventType.STATE_CHANGE, {"taskId": task_id, "state": state.value})
 
     async def _speak(self, task_id: str, text: str) -> None:
+        from backend.voice.tts_streamer import tts_streamer
         await event_bus.publish(EventType.TTS_SPEAK, {"taskId": task_id, "text": text})
+        asyncio.create_task(tts_streamer.speak_text(text, task_id=task_id))
 
     async def _screenshot(self, task_id: str) -> Optional[str]:
         try:

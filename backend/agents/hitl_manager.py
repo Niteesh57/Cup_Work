@@ -47,6 +47,8 @@ class HitlManager:
         future = asyncio.get_running_loop().create_future()
         self._pending[hitl_id] = future
 
+        from backend.voice.tts_streamer import tts_streamer
+
         await event_bus.publish(EventType.STATE_CHANGE, {"taskId": task_id, "state": "waiting_hitl"})
         await event_bus.publish(EventType.HITL_QUESTION, {
             "id": hitl_id,
@@ -54,7 +56,9 @@ class HitlManager:
             "question": question,
             "options": options or [],
         })
-        await event_bus.publish(EventType.TTS_SPEAK, {"text": question})
+        styled_question = f"[curious] {question}" if not question.strip().startswith("[") else question
+        await event_bus.publish(EventType.TTS_SPEAK, {"text": styled_question, "taskId": task_id})
+        asyncio.create_task(tts_streamer.speak_text(styled_question, task_id=task_id))
 
         try:
             answer = await asyncio.wait_for(future, timeout=timeout)

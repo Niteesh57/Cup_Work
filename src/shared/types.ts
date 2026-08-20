@@ -118,7 +118,17 @@ export type AgentEventType =
   | 'TASK_COMPLETED'       | 'TASK_PAUSED'             | 'AGENT_STEP_UPDATE'
   | 'OVERLAY_SHOW_BOX'     | 'OVERLAY_CLOSE_BOX'       | 'OVERLAY_CLEAR_BOXES'
   | 'OVERLAY_SHOW_SCREENPAD'| 'OVERLAY_CLOSE_SCREENPAD' | 'TTS_SPEAK'
+  | 'TTS_STREAM_START'     | 'TTS_STREAM_CHUNK'        | 'TTS_STREAM_END'
   | 'LISTEN_START'         | 'LISTEN_STOP';
+
+export interface TtsStreamChunkPayload {
+  streamId: string;
+  taskId?: string;
+  chunkIndex?: number;
+  audioChunk?: string;
+  sampleRate?: number;
+  channels?: number;
+}
 
 export interface AgentEvent {
   type:       AgentEventType;

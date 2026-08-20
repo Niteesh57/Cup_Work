@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Laptop, Lock, User, ArrowRight, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
-import { StaticCupIcon } from './CoffeeCup';
+import appIcon from '../assets/icon.png';
 
 interface DeviceRegistrationScreenProps {
   deviceId: string;
@@ -76,8 +76,13 @@ export function DeviceRegistrationScreen({
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100/90 overflow-hidden relative z-10 animate-scaleUp">
         {/* Top Header Card */}
         <div className="bg-gradient-to-b from-slate-50 to-white px-8 pt-8 pb-6 border-b border-slate-100 text-center">
-          <div className="inline-flex items-center justify-center p-3.5 bg-slate-900 text-white rounded-2xl shadow-md mb-4 animate-bounce" style={{ animationDuration: '3s' }}>
-            <StaticCupIcon size={30} />
+          <div className="inline-flex items-center justify-center p-2.5 bg-slate-900/5 rounded-3xl mb-3 shadow-inner">
+            <img
+              src={appIcon}
+              alt="Cup Work Icon"
+              className="w-14 h-14 object-contain rounded-2xl shadow-md animate-pulse"
+              style={{ animationDuration: '3s' }}
+            />
           </div>
 
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
