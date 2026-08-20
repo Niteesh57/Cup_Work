@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { spawn, ChildProcess } from 'child_process';
 import dotenv from 'dotenv';
 import WebSocket from 'ws';
@@ -17,6 +18,10 @@ import {
 import { UiaBridge } from './bridge/uiaBridge';
 import { executeBrowserTool, closeLaunchedChrome } from './bridge/browserCdp';
 import { ElementResolver } from './bridge/elementResolver';
+
+// Stable Device identity for this machine
+const localDeviceId = `dev_${Buffer.from(os.hostname() + '-' + (os.userInfo().username || 'user')).toString('hex').slice(0, 12)}`;
+const localDeviceName = `${os.hostname()} (${os.userInfo().username || 'desktop'})`;
 
 // Load initial environment variables from project root .env
 const envPath = [
@@ -90,6 +95,15 @@ function connectWebSocket() {
 
     client.on('open', () => {
       console.log('[Main] Connected to Python Backend WebSocket successfully!');
+      try {
+        client.send(JSON.stringify({
+          type: 'REGISTER_DEVICE',
+          deviceId: localDeviceId,
+          deviceName: localDeviceName,
+        }));
+      } catch (err) {
+        console.error('[Main] Failed to send REGISTER_DEVICE:', err);
+      }
       if (wsReconnectTimer) {
         clearTimeout(wsReconnectTimer);
         wsReconnectTimer = null;
@@ -326,7 +340,7 @@ process.on('SIGTERM', () => {
 });
 
 // ── IPC: Execute Prompt (Routed to Python Agent Brain) ────────────────────────
-ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string; audioBase64?: string; mimeType?: string; apiKey?: string; model?: string; taskId?: string }) => {
+ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string; audioBase64?: string; mimeType?: string; apiKey?: string; model?: string; taskId?: string; userId?: string; deviceId?: string; deviceName?: string }) => {
   console.log('[agent:execute-prompt] Sending to Python Brain:', request.prompt || '[Direct Audio]', 'hasAudio:', !!request.audioBase64, 'taskId:', request.taskId);
   showScreenGlow('Thinking…');
 
@@ -339,6 +353,9 @@ ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string
         audioBase64: request.audioBase64,
         mimeType: request.mimeType,
         taskId: request.taskId,
+        userId: request.userId,
+        deviceId: request.deviceId || localDeviceId,
+        deviceName: request.deviceName || localDeviceName,
         model: request.model,
         apiKey: request.apiKey,
       }),
@@ -348,13 +365,17 @@ ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string
       throw new Error(`Python backend returned HTTP ${res.status}: ${res.statusText}`);
     }
 
-    const data = await res.json() as { success: boolean; message: string; steps?: unknown[]; error?: string };
-    console.log('[agent:execute-prompt] Python Brain answered:', JSON.stringify(data.message));
+    const data = await res.json() as { success: boolean; message: string; steps?: unknown[]; error?: string; userId?: string; deviceId?: string; userName?: string; deviceName?: string };
+    console.log('[agent:execute-prompt] Python Brain answered:', JSON.stringify(data.message), 'user:', data.userName, 'device:', data.deviceName);
     return {
       success: data.success,
       message: data.message,
       steps: data.steps || [],
       error: data.error,
+      userId: data.userId,
+      deviceId: data.deviceId,
+      userName: data.userName,
+      deviceName: data.deviceName,
     };
   } catch (err: unknown) {
     hideScreenGlow();
@@ -440,16 +461,23 @@ ipcMain.handle('config:get', async () => {
   try {
     const res = await fetch(`${BACKEND_HTTP}/api/config`);
     if (res.ok) {
-      return await res.json();
+      const data = await res.json() as Record<string, unknown>;
+      return { ...data, backendConnected: true };
     }
   } catch (e) {
-    console.warn('[config:get] Backend not reachable yet, returning backend defaults');
+    console.warn('[config:get] Backend not reachable yet');
   }
 
   return {
-    geminiModel: 'gemini-2.5-flash',
+    backendConnected: false,
+    geminiModel: '',
   };
 });
+
+ipcMain.handle('backend:is-connected', () => {
+  return wsClient !== null && wsClient.readyState === WebSocket.OPEN;
+});
+
 
 ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>) => {
   try {
@@ -462,6 +490,69 @@ ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>)
   } catch (err) {
     console.error('[config:save] Error:', err);
     return false;
+  }
+});
+
+// ── IPC: User Identity & Profile (Supports modifying ONLY name) ───────────────
+ipcMain.handle('user:get-profile', async (_event, userId?: string) => {
+  try {
+    const regRes = await fetch(`${BACKEND_HTTP}/api/device/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId: localDeviceId,
+        deviceName: localDeviceName,
+        userId: userId || undefined,
+      }),
+    });
+    if (!regRes.ok) return { success: false, error: 'Failed to resolve device identity' };
+    const identity = (await regRes.json()) as {
+      userId: string;
+      userName: string;
+      deviceId: string;
+      deviceName: string;
+      isNewUser?: boolean;
+    };
+
+    const profRes = await fetch(`${BACKEND_HTTP}/api/user/profile?userId=${encodeURIComponent(identity.userId)}`);
+    const profData = profRes.ok
+      ? ((await profRes.json()) as { success: boolean; profile: Record<string, unknown> })
+      : { success: true, profile: {} };
+
+    return {
+      success: true,
+      userId: identity.userId,
+      userName: identity.userName,
+      deviceId: identity.deviceId,
+      deviceName: identity.deviceName,
+      profile: profData.profile || {},
+    };
+  } catch (err: unknown) {
+    console.error('[user:get-profile] Error:', err);
+    return {
+      success: false,
+      userId: userId || 'usr_local',
+      userName: 'Local User',
+      deviceId: localDeviceId,
+      deviceName: localDeviceName,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+ipcMain.handle('user:update-name', async (_event, { userId, name }: { userId: string; name: string }) => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/user/profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, name }),
+    });
+    if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+    const data = await res.json();
+    return data;
+  } catch (err: unknown) {
+    console.error('[user:update-name] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 });
 
@@ -501,6 +592,22 @@ ipcMain.handle('agent:human-response', async (_event, payload: { id?: string; ta
   }
   return { success: false, message: 'Backend WebSocket is not connected' };
 });
+
+ipcMain.handle('agent:hitl-respond', async (_event, payload: { id?: string; taskId?: string; answer: string }) => {
+  const msg = {
+    type: 'HUMAN_RESPONSE',
+    id: payload.id || '',
+    taskId: payload.taskId || '',
+    answer: payload.answer,
+  };
+
+  if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+    wsClient.send(JSON.stringify(msg));
+    return { success: true };
+  }
+  return { success: false, message: 'Backend WebSocket is not connected' };
+});
+
 
 // ── Overlay Component Dismissal IPC Handlers ──────────────────────────────
 ipcMain.handle('agent:close-whiteboard', () => {

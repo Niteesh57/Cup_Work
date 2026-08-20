@@ -156,10 +156,17 @@ export interface AgentStep {
   timestamp:     string;
   thought:       string;
   actionName:    string;
+  agentName?:    string;
   parameters:    Record<string, unknown>;
   result?:       Record<string, unknown>;
   success?:      boolean;
   screenshotUrl?: string;
+  durationMs?:   number;
+  tokens?: {
+    prompt?: number;
+    completion?: number;
+    total?: number;
+  };
 }
 
 // ── Execution Request / Response ──────────────────────────────────────────────
@@ -171,11 +178,18 @@ export interface ExecutionRequest {
 }
 
 export interface ExecutionResponse {
-  success:  boolean;
-  message:  string;
-  steps:    AgentStep[];
-  taskId?:  string;
-  error?:   string;
+  success:    boolean;
+  message:    string;
+  steps:      AgentStep[];
+  taskId?:    string;
+  error?:     string;
+  spokeVoice?: boolean;
+  stats?: {
+    durationMs?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
 }
 
 // ── Window Info ───────────────────────────────────────────────────────────────

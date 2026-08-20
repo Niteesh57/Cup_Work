@@ -12,46 +12,102 @@ logger = logging.getLogger("hey_jave.bridge")
 
 class ElectronBridge:
     """
-    Bridge connecting the Python Agent Brain to the Electron client
-    for real-time tool execution, live event streaming, and native automation.
+    Bridge connecting the Python Agent Brain to Electron clients
+    for multi-device real-time tool execution, live event streaming, and native automation.
+    Routes events (TTS audio, tool actions, UI highlights) strictly to the initiating device.
     """
 
     def __init__(self):
         self._clients: Set[WebSocket] = set()
+        self._device_clients: Dict[str, WebSocket] = {}
+        self._client_devices: Dict[WebSocket, str] = {}
+        self._task_device_map: Dict[str, str] = {}
         self._pending_requests: Dict[str, asyncio.Future] = {}
         self._uia_engine_path = config.ROOT_DIR / "src" / "bridge" / "uia-engine.ps1"
 
-    def register_client(self, websocket: WebSocket):
+    def register_client(self, websocket: WebSocket, device_id: Optional[str] = None):
         self._clients.add(websocket)
-        logger.info(f"Electron client connected. Total clients: {len(self._clients)}")
+        if device_id:
+            self._device_clients[device_id] = websocket
+            self._client_devices[websocket] = device_id
+        logger.info(f"Electron client connected (device={device_id}). Total clients: {len(self._clients)}")
+
+    def register_device_client(self, device_id: str, websocket: WebSocket):
+        if not device_id:
+            return
+        self._device_clients[device_id] = websocket
+        self._client_devices[websocket] = device_id
+        self._clients.add(websocket)
+        logger.info(f"Registered WebSocket for device '{device_id}'. Total device mappings: {len(self._device_clients)}")
+
+    def associate_task_device(self, task_id: str, device_id: str):
+        if task_id and device_id:
+            self._task_device_map[task_id] = device_id
+
+    def get_device_for_task(self, task_id: str) -> Optional[str]:
+        return self._task_device_map.get(task_id)
 
     def unregister_client(self, websocket: WebSocket):
         self._clients.discard(websocket)
-        logger.info(f"Electron client disconnected. Total clients: {len(self._clients)}")
+        dev_id = self._client_devices.pop(websocket, None)
+        if dev_id and self._device_clients.get(dev_id) == websocket:
+            self._device_clients.pop(dev_id, None)
+        logger.info(f"Electron client disconnected (device={dev_id}). Total clients: {len(self._clients)}")
 
     @property
     def has_active_client(self) -> bool:
         return len(self._clients) > 0
 
-    async def broadcast(self, message: Dict[str, Any]):
-        """Broadcasts a JSON message to all connected Electron frontends."""
+    def has_client_for_device(self, device_id: str) -> bool:
+        return device_id in self._device_clients
+
+    async def broadcast(self, message: Dict[str, Any], target_device_id: Optional[str] = None, task_id: Optional[str] = None):
+        """
+        Sends a JSON message to the targeted device or all frontends.
+        If target_device_id or task_id is present, routes EXCLUSIVELY to that device's socket
+        so other connected users/devices never experience cross-talk or unwanted TTS speech.
+        """
         if not self._clients:
             return
+
+        dev_id = target_device_id or message.get("deviceId")
+        if not dev_id:
+            t_id = task_id or message.get("taskId")
+            if t_id:
+                dev_id = self._task_device_map.get(t_id)
+
+        # Targeted dispatch to specific device
+        if dev_id and dev_id in self._device_clients:
+            target_ws = self._device_clients[dev_id]
+            try:
+                await target_ws.send_text(json.dumps(message))
+                return
+            except Exception as e:
+                logger.warning(f"Error sending message to targeted device '{dev_id}': {e}")
+                self.unregister_client(target_ws)
+
+        # Fallback broadcast to all connected clients if untargeted or target socket disconnected
         payload = json.dumps(message)
         dead_clients = set()
-        for client in self._clients:
+        for client in list(self._clients):
             try:
                 await client.send_text(payload)
             except Exception as e:
                 logger.warning(f"Error sending message to client: {e}")
                 dead_clients.add(client)
         for dead in dead_clients:
-            self._clients.discard(dead)
+            self.unregister_client(dead)
 
-    def handle_client_message(self, data: Dict[str, Any]):
+    def handle_client_message(self, data: Dict[str, Any], websocket: Optional[WebSocket] = None):
         """Processes responses received from the Electron frontend."""
         msg_type = data.get("type")
         req_id = data.get("id")
+
+        if msg_type == "REGISTER_DEVICE" and websocket:
+            dev_id = str(data.get("deviceId", ""))
+            if dev_id:
+                self.register_device_client(dev_id, websocket)
+            return
 
         if msg_type in ("TOOL_RESULT", "HUMAN_RESPONSE", "ACTION_RESULT") and req_id:
             future = self._pending_requests.pop(req_id, None)
@@ -60,24 +116,22 @@ class ElectronBridge:
         else:
             logger.debug(f"Received unhandled client message: {data}")
 
-    async def execute_tool(self, tool_name: str, args: Dict[str, Any], task_id: str = "") -> Dict[str, Any]:
+    async def execute_tool(self, tool_name: str, args: Dict[str, Any], task_id: str = "", device_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Executes a desktop tool via the connected Electron frontend.
-        If no Electron client is connected via WebSocket, waits up to 3s, then falls back
-        to direct PowerShell execution for pure OS tools, and fails closed for DOM/smart tools.
+        Executes a desktop tool via the connected Electron frontend for the specific initiating device.
         """
         req_id = str(uuid.uuid4())
-        logger.info(f"Executing tool '{tool_name}' (task={task_id}, req={req_id}) with args: {args}")
+        target_device = device_id or self.get_device_for_task(task_id)
+        logger.info(f"Executing tool '{tool_name}' (task={task_id}, device={target_device}, req={req_id}) with args: {args}")
 
         # If no client currently registered, give a short grace window (up to 2.5s)
-        # in case Electron is currently establishing the WebSocket connection
         if not self.has_active_client:
             for _ in range(12):
                 if self.has_active_client:
                     break
                 await asyncio.sleep(0.2)
 
-        # If Electron client is connected, dispatch over WebSocket
+        # If Electron client is connected, dispatch over WebSocket to the specific device
         if self.has_active_client:
             loop = asyncio.get_running_loop()
             future = loop.create_future()
@@ -87,10 +141,11 @@ class ElectronBridge:
                 "type": "TOOL_EXECUTE",
                 "id": req_id,
                 "taskId": task_id,
+                "deviceId": target_device,
                 "tool": tool_name,
                 "args": args
             }
-            await self.broadcast(msg)
+            await self.broadcast(msg, target_device_id=target_device, task_id=task_id)
 
             try:
                 timeout = (config.UIA_TIMEOUT_MS / 1000.0) + 15.0 # extra buffer for complex UI ops

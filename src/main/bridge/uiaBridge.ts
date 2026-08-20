@@ -4,6 +4,10 @@ import fs from 'fs';
 import { shell } from 'electron';
 import { UiaActionResult, WindowInfo } from '../../shared/types';
 import {
+  showScreenPad,
+  closeScreenPad,
+  showHighlightBox,
+  clearAllHighlightBoxes,
   showWhiteboardStep,
   showWhiteboardDiagram,
   addWhiteboardClarification,
@@ -11,6 +15,7 @@ import {
   closeWhiteboard
 } from '../overlayWindow';
 import { speakTextNative, stopAllTts } from '../tts';
+
 
 export class UiaBridge {
 
@@ -630,28 +635,56 @@ export class UiaBridge {
           args.x !== undefined ? Number(args.x) : undefined,
           args.y !== undefined ? Number(args.y) : undefined
         )) as unknown as Record<string, unknown>;
-      case 'show_screenpad':
-        return (await this.showScratchpad(
-          String(args.title || 'Scratchpad'),
-          String(args.message || 'Suggested content:'),
-          String(args.content || args.command || ''),
-          String(args.type || 'auto')
-        )) as unknown as Record<string, unknown>;
-      case 'ask_human':
-        return (await this.askHuman(
-          String(args.question || ''),
-          Array.isArray(args.options) ? (args.options as string[]) : []
-        )) as unknown as Record<string, unknown>;
-      case 'highlight_box':
-        return (await this.highlightBox(
-          Number(args.x),
-          Number(args.y),
-          Number(args.width),
-          Number(args.height),
-          String(args.color || 'cyan'),
-          String(args.label || ''),
-          args.stepNumber !== undefined ? Number(args.stepNumber) : 0
-        )) as unknown as Record<string, unknown>;
+      case 'show_screenpad': {
+        const title = String(args.title || 'Scratchpad');
+        const message = String(args.message || 'Suggested content:');
+        const content = String(args.content || args.command || '');
+        const type = String(args.type || 'auto');
+        showScreenPad({
+          title,
+          message,
+          content,
+          type: type as 'command' | 'code' | 'markdown' | 'options' | 'question' | 'scratchpad',
+        });
+        return { success: true, message: `Displayed ScreenPad: ${title}` };
+      }
+      case 'close_screenpad': {
+        closeScreenPad();
+        return { success: true, message: 'Closed ScreenPad' };
+      }
+      case 'ask_human': {
+        const question = String(args.question || 'Please select an option:');
+        const options = Array.isArray(args.options) ? (args.options as string[]) : [];
+        if (question.trim()) {
+          void speakTextNative(question);
+        }
+        return {
+          success: true,
+          question,
+          options,
+          message: `Presented question in app: ${question}`,
+        };
+      }
+
+      case 'highlight_box': {
+        const boxId = `box-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        showHighlightBox({
+          id: boxId,
+          x: Number(args.x),
+          y: Number(args.y),
+          width: Number(args.width),
+          height: Number(args.height),
+          color: (String(args.color || 'blue')) as 'red' | 'green' | 'yellow' | 'blue',
+          label: String(args.label || ''),
+          stepNumber: args.stepNumber !== undefined ? Number(args.stepNumber) : undefined,
+        });
+        return { success: true, id: boxId, message: 'Highlighted element on screen' };
+      }
+      case 'clear_highlight_boxes': {
+        clearAllHighlightBoxes();
+        return { success: true, message: 'Cleared highlight boxes' };
+      }
+
       case 'wait_seconds': {
         const secs = Number(args.seconds || 2);
         await new Promise((r) => setTimeout(r, secs * 1000));

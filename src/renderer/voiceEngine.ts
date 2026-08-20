@@ -63,7 +63,7 @@ export class VoiceEngine {
   constructor(private options: VoiceEngineOptions) {
     this.silenceThreshold = options.silenceThreshold ?? 0.01;
     this.minSpeechMs = options.minSpeechMs ?? 250;
-    this.endSilenceMs = options.endSilenceMs ?? 750;       // 750ms silence triggers instant completion
+    this.endSilenceMs = options.endSilenceMs ?? 2000;      // 2000ms (2s) silence buffer to stop recording
     this.countdownMs = options.countdownMs ?? 0;          // 0 = immediate emit without countdown delay
     this.idleTimeoutMs = options.idleTimeoutMs ?? 0;      // 0 = continuous listen
   }
@@ -101,6 +101,7 @@ export class VoiceEngine {
   activate(): void {
     if (this.active) return;
     this.active = true;
+    this.reset();
     this.setState('LISTENING');
     this.startIdleTimer();
   }
@@ -141,7 +142,7 @@ export class VoiceEngine {
   }
 
   private handleAudio(samples: Float32Array): void {
-    if (this.isMuted) return;
+    if (!this.active || this.isMuted) return;
 
     const rms = this.rms(samples);
     const isSpeech = rms > this.silenceThreshold;
@@ -209,18 +210,24 @@ export class VoiceEngine {
   }
 
   private finishUtterance(): void {
-    if (this.speechMs >= this.minSpeechMs) {
+    if (this.speechMs >= this.minSpeechMs && this.chunks.length > 0) {
       const wavBase64 = this.encodeWav(this.chunks);
       const durationMs = Math.round(this.speechMs);
+      this.reset();
       this.options.onUtterance({
         wavBase64,
         mimeType: 'audio/wav',
         durationMs,
       });
+    } else {
+      this.reset();
     }
-    this.reset();
-    this.setState('LISTENING');
-    if (this.active) this.startIdleTimer();
+    if (this.active && !this.isMuted) {
+      this.setState('LISTENING');
+      this.startIdleTimer();
+    } else {
+      this.setState('IDLE');
+    }
   }
 
   private startIdleTimer(): void {

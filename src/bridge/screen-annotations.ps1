@@ -210,42 +210,6 @@ function Get-ColorHex ($colorStr) {
         WindowStartupLocation="Manual">
     <Grid Name="MainGrid" Background="#01000000">
         <Canvas Name="AnnotationCanvas" Background="Transparent" IsHitTestVisible="False"/>
-        
-        <!-- Top Floating Control Bar with explicit Erase / Close Button -->
-        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,20,24,0"
-                Background="#F0141517" BorderBrush="#35383F" BorderThickness="1.5" CornerRadius="12" Padding="14,8">
-            <Border.Effect>
-                <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="4" Opacity="0.85"/>
-            </Border.Effect>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Background="#10B981" CornerRadius="4" Padding="6,2" Margin="0,0,10,0">
-                    <TextBlock Text="AI GUIDE ACTIVE" FontSize="10" FontWeight="Bold" Foreground="#000000"/>
-                </Border>
-                <Button Name="CloseButton" Background="#DC2626" Foreground="#FFFFFF" BorderThickness="0"
-                        Padding="12,4" FontWeight="Bold" FontSize="12" Cursor="Hand">
-                    <Button.Resources>
-                        <Style TargetType="Border">
-                            <Setter Property="CornerRadius" Value="6"/>
-                        </Style>
-                    </Button.Resources>
-                    <TextBlock Text="Clear / Close (ESC)"/>
-                </Button>
-            </StackPanel>
-        </Border>
-
-        <!-- Bottom Informational Banner -->
-        <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24"
-                Background="#E6141517" BorderBrush="#35383F" BorderThickness="1.5" CornerRadius="20" Padding="18,8">
-            <Border.Effect>
-                <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="4" Opacity="0.8"/>
-            </Border.Effect>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Background="#23252A" CornerRadius="5" Padding="6,2" Margin="0,0,8,0" BorderBrush="#35383F" BorderThickness="1">
-                    <TextBlock Text="SCREEN GUIDE" FontSize="10" FontWeight="Bold" Foreground="#A0A5B0"/>
-                </Border>
-                <TextBlock Text="Follow the boxes/arrows. Click Clear or press ESC when done." FontSize="12.5" FontWeight="SemiBold" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-            </StackPanel>
-        </Border>
     </Grid>
 </Window>
 "@
@@ -267,87 +231,170 @@ $window.Height = $vHeight
 $canvas = $window.FindName("AnnotationCanvas")
 $mainGrid = $window.FindName("MainGrid")
 
-# Coordinate conversion supporting Gemini Normalized 0..1000 coordinates and direct Screen Pixels
+# Coordinate conversion supporting Gemini Normalized 0..1000 coordinates, box arrays, and direct Screen Pixels
 function Convert-BoxCoordinates($b, $targetW, $targetH, $imgW, $imgH) {
-    # 1. Direct bounds object from UI element tree: { bounds: { x, y, width, height } }
-    if ($b.bounds) {
-        $bx = if ($null -ne $b.bounds.x) { [double]$b.bounds.x } else { 0.0 }
-        $by = if ($null -ne $b.bounds.y) { [double]$b.bounds.y } else { 0.0 }
-        $bw = if ($null -ne $b.bounds.width) { [double]$b.bounds.width } else { 60.0 }
-        $bh = if ($null -ne $b.bounds.height) { [double]$b.bounds.height } else { 60.0 }
-        return @{
-            x = $bx
-            y = $by
-            width = [Math]::Max(10.0, $bw)
-            height = [Math]::Max(10.0, $bh)
-        }
+    if ($null -eq $b) {
+        return @{ x = 0; y = 0; width = 60; height = 60 }
     }
 
-    # 2. box_2d array: [ymin, xmin, ymax, xmax] in normalized 0..1000
+    # Extract raw 4-element coordinate array if present (e.g. bounds: [640, 640, 715, 765] or box_2d: [...])
+    $rawArray = $null
     if ($b.box_2d) {
-        $arr = @($b.box_2d)
-        if ($arr.Count -ge 4) {
-            $rawY1 = [double]$arr[0]
-            $rawX1 = [double]$arr[1]
-            $rawY2 = [double]$arr[2]
-            $rawX2 = [double]$arr[3]
-            $ymin = [Math]::Min($rawY1, $rawY2)
-            $ymax = [Math]::Max($rawY1, $rawY2)
-            $xmin = [Math]::Min($rawX1, $rawX2)
-            $xmax = [Math]::Max($rawX1, $rawX2)
+        $rawArray = @($b.box_2d)
+    } elseif ($b.bounds -is [System.Collections.IEnumerable] -and -not ($b.bounds -is [string] -or $b.bounds -is [System.Collections.IDictionary])) {
+        $rawArray = @($b.bounds)
+    } elseif ($b -is [System.Collections.IEnumerable] -and -not ($b -is [string] -or $b -is [System.Collections.IDictionary])) {
+        $rawArray = @($b)
+    }
+
+    # Handle 4-number coordinate array [ymin, xmin, ymax, xmax] (standard Gemini visual grounding)
+    if ($null -ne $rawArray -and $rawArray.Count -ge 4) {
+        $v0 = [double]$rawArray[0]
+        $v1 = [double]$rawArray[1]
+        $v2 = [double]$rawArray[2]
+        $v3 = [double]$rawArray[3]
+
+        $ymin = [Math]::Min($v0, $v2)
+        $ymax = [Math]::Max($v0, $v2)
+        $xmin = [Math]::Min($v1, $v3)
+        $xmax = [Math]::Max($v1, $v3)
+
+        # Check if coordinates are 0..1 (relative fraction)
+        if ($v0 -le 1.0 -and $v1 -le 1.0 -and $v2 -le 1.0 -and $v3 -le 1.0 -and ($v0 -gt 0.0 -or $v1 -gt 0.0 -or $v2 -gt 0.0 -or $v3 -gt 0.0)) {
+            return @{
+                x = $xmin * $targetW
+                y = $ymin * $targetH
+                width = [Math]::Max(16.0, ($xmax - $xmin) * $targetW)
+                height = [Math]::Max(16.0, ($ymax - $ymin) * $targetH)
+            }
+        }
+
+        # Check if coordinates are 0..1000 (Gemini visual grounding format)
+        if ($v0 -le 1000.0 -and $v1 -le 1000.0 -and $v2 -le 1000.0 -and $v3 -le 1000.0) {
             return @{
                 x = ($xmin / 1000.0) * $targetW
                 y = ($ymin / 1000.0) * $targetH
-                width = [Math]::Max(10.0, (($xmax - $xmin) / 1000.0) * $targetW)
-                height = [Math]::Max(10.0, (($ymax - $ymin) / 1000.0) * $targetH)
+                width = [Math]::Max(16.0, (($xmax - $xmin) / 1000.0) * $targetW)
+                height = [Math]::Max(16.0, (($ymax - $ymin) / 1000.0) * $targetH)
             }
+        }
+
+        # Raw screen pixel rectangle [ymin, xmin, ymax, xmax]
+        return @{
+            x = $xmin
+            y = $ymin
+            width = [Math]::Max(16.0, ($xmax - $xmin))
+            height = [Math]::Max(16.0, ($ymax - $ymin))
         }
     }
 
-    # 3. ymin, xmin, ymax, xmax keys (0..1000)
-    if ($null -ne $b.ymin -and $null -ne $b.xmin -and $null -ne $b.ymax -and $null -ne $b.xmax) {
-        $ymin = [Math]::Min([double]$b.ymin, [double]$b.ymax)
-        $ymax = [Math]::Max([double]$b.ymin, [double]$b.ymax)
-        $xmin = [Math]::Min([double]$b.xmin, [double]$b.xmax)
-        $xmax = [Math]::Max([double]$b.xmin, [double]$b.xmax)
+    # Extract dictionary object for bounds
+    $bObj = if ($b.bounds -and -not ($b.bounds -is [System.Collections.IEnumerable] -and -not ($b.bounds -is [System.Collections.IDictionary]))) { $b.bounds } else { $b }
+
+    # Check ymin/xmin/ymax/xmax named properties
+    if ($null -ne $bObj.ymin -and $null -ne $bObj.xmin -and $null -ne $bObj.ymax -and $null -ne $bObj.xmax) {
+        $ymin = [Math]::Min([double]$bObj.ymin, [double]$bObj.ymax)
+        $ymax = [Math]::Max([double]$bObj.ymin, [double]$bObj.ymax)
+        $xmin = [Math]::Min([double]$bObj.xmin, [double]$bObj.xmax)
+        $xmax = [Math]::Max([double]$bObj.xmin, [double]$bObj.xmax)
+        if ($ymin -le 1.0 -and $xmin -le 1.0 -and $ymax -le 1.0 -and $xmax -le 1.0) {
+            return @{
+                x = $xmin * $targetW
+                y = $ymin * $targetH
+                width = [Math]::Max(16.0, ($xmax - $xmin) * $targetW)
+                height = [Math]::Max(16.0, ($ymax - $ymin) * $targetH)
+            }
+        }
         return @{
             x = ($xmin / 1000.0) * $targetW
             y = ($ymin / 1000.0) * $targetH
-            width = [Math]::Max(10.0, (($xmax - $xmin) / 1000.0) * $targetW)
-            height = [Math]::Max(10.0, (($ymax - $ymin) / 1000.0) * $targetH)
+            width = [Math]::Max(16.0, (($xmax - $xmin) / 1000.0) * $targetW)
+            height = [Math]::Max(16.0, (($ymax - $ymin) / 1000.0) * $targetH)
         }
     }
 
-    $rawX = if ($null -ne $b.x) { [double]$b.x } else { 0.0 }
-    $rawY = if ($null -ne $b.y) { [double]$b.y } else { 0.0 }
-    $rawW = if ($null -ne $b.width) { [double]$b.width } else { 60.0 }
-    $rawH = if ($null -ne $b.height) { [double]$b.height } else { 60.0 }
+    # Check left/top/right/bottom properties
+    if ($null -ne $bObj.left -and $null -ne $bObj.top -and ($null -ne $bObj.right -or $null -ne $bObj.bottom)) {
+        $left = [double]$bObj.left
+        $top = [double]$bObj.top
+        $right = if ($null -ne $bObj.right) { [double]$bObj.right } else { $left + 100.0 }
+        $bottom = if ($null -ne $bObj.bottom) { [double]$bObj.bottom } else { $top + 50.0 }
+        return @{
+            x = $left
+            y = $top
+            width = [Math]::Max(16.0, ($right - $left))
+            height = [Math]::Max(16.0, ($bottom - $top))
+        }
+    }
 
-    # 4. Explicitly normalized coordinates
-    if ($b.normalized -eq $true) {
+    # Check x/y/width/height properties (with case-insensitivity)
+    $rawX = if ($null -ne $bObj.x) { [double]$bObj.x } elseif ($null -ne $bObj.X) { [double]$bObj.X } else { 0.0 }
+    $rawY = if ($null -ne $bObj.y) { [double]$bObj.y } elseif ($null -ne $bObj.Y) { [double]$bObj.Y } else { 0.0 }
+    $rawW = if ($null -ne $bObj.width) { [double]$bObj.width } elseif ($null -ne $bObj.Width) { [double]$bObj.Width } else { 60.0 }
+    $rawH = if ($null -ne $bObj.height) { [double]$bObj.height } elseif ($null -ne $bObj.Height) { [double]$bObj.Height } else { 60.0 }
+
+    if ($b.normalized -eq $true -or $bObj.normalized -eq $true) {
         return @{
             x = ($rawX / 1000.0) * $targetW
             y = ($rawY / 1000.0) * $targetH
-            width = [Math]::Max(10.0, ($rawW / 1000.0) * $targetW)
-            height = [Math]::Max(10.0, ($rawH / 1000.0) * $targetH)
+            width = [Math]::Max(16.0, ($rawW / 1000.0) * $targetW)
+            height = [Math]::Max(16.0, ($rawH / 1000.0) * $targetH)
         }
     }
 
-    # 5. Direct screen pixel coordinates (isPixels: true or default)
     return @{
         x = $rawX
         y = $rawY
-        width = [Math]::Max(10.0, $rawW)
-        height = [Math]::Max(10.0, $rawH)
+        width = [Math]::Max(16.0, $rawW)
+        height = [Math]::Max(16.0, $rawH)
     }
 }
 
 function Convert-ArrowCoordinates($a, $targetW, $targetH, $imgW, $imgH) {
-    $fx = [double]$a.fromX
-    $fy = [double]$a.fromY
-    $tx = [double]$a.toX
-    $ty = [double]$a.toY
+    if ($null -eq $a) {
+        return @{ fromX = 0; fromY = 0; toX = 0; toY = 0 }
+    }
 
+    # Support all naming conventions: fromX, start_x, startX, x1, etc.
+    $fx = if ($null -ne $a.fromX) { [double]$a.fromX }
+          elseif ($null -ne $a.start_x) { [double]$a.start_x }
+          elseif ($null -ne $a.startX) { [double]$a.startX }
+          elseif ($null -ne $a.from_x) { [double]$a.from_x }
+          elseif ($null -ne $a.x1) { [double]$a.x1 }
+          else { 0.0 }
+
+    $fy = if ($null -ne $a.fromY) { [double]$a.fromY }
+          elseif ($null -ne $a.start_y) { [double]$a.start_y }
+          elseif ($null -ne $a.startY) { [double]$a.startY }
+          elseif ($null -ne $a.from_y) { [double]$a.from_y }
+          elseif ($null -ne $a.y1) { [double]$a.y1 }
+          else { 0.0 }
+
+    $tx = if ($null -ne $a.toX) { [double]$a.toX }
+          elseif ($null -ne $a.end_x) { [double]$a.end_x }
+          elseif ($null -ne $a.endX) { [double]$a.endX }
+          elseif ($null -ne $a.to_x) { [double]$a.to_x }
+          elseif ($null -ne $a.x2) { [double]$a.x2 }
+          else { 0.0 }
+
+    $ty = if ($null -ne $a.toY) { [double]$a.toY }
+          elseif ($null -ne $a.end_y) { [double]$a.end_y }
+          elseif ($null -ne $a.endY) { [double]$a.endY }
+          elseif ($null -ne $a.to_y) { [double]$a.to_y }
+          elseif ($null -ne $a.y2) { [double]$a.y2 }
+          else { 0.0 }
+
+    # If relative 0..1
+    if ($fx -le 1.0 -and $fy -le 1.0 -and $tx -le 1.0 -and $ty -le 1.0 -and ($fx -gt 0.0 -or $fy -gt 0.0 -or $tx -gt 0.0 -or $ty -gt 0.0)) {
+        return @{
+            fromX = $fx * $targetW
+            fromY = $fy * $targetH
+            toX = $tx * $targetW
+            toY = $ty * $targetH
+        }
+    }
+
+    # If explicitly normalized
     if ($a.normalized -eq $true) {
         return @{
             fromX = ($fx / 1000.0) * $targetW
@@ -357,13 +404,16 @@ function Convert-ArrowCoordinates($a, $targetW, $targetH, $imgW, $imgH) {
         }
     }
 
-    # If numbers are small <= 1.0 (relative 0..1), normalize:
-    if ($fx -le 1.0 -and $fy -le 1.0 -and $tx -le 1.0 -and $ty -le 1.0 -and ($fx -gt 0.0 -or $fy -gt 0.0)) {
-        return @{
-            fromX = $fx * $targetW
-            fromY = $fy * $targetH
-            toX = $tx * $targetW
-            toY = $ty * $targetH
+    # If coordinates are 0..1000 and target width/height is larger (e.g. 1920x1080) and all coords <= 1000
+    if ($fx -le 1000.0 -and $fy -le 1000.0 -and $tx -le 1000.0 -and $ty -le 1000.0 -and ($fx -gt 0.0 -or $fy -gt 0.0) -and ($targetW -gt 1000.0 -or $targetH -gt 1000.0)) {
+        # Check if coordinates look like 0..1000 scale relative to standard 1080p
+        if ($fx -le 1000.0 -and $tx -le 1000.0 -and ($targetW -ge 1280.0)) {
+            return @{
+                fromX = ($fx / 1000.0) * $targetW
+                fromY = ($fy / 1000.0) * $targetH
+                toX = ($tx / 1000.0) * $targetW
+                toY = ($ty / 1000.0) * $targetH
+            }
         }
     }
 
@@ -555,19 +605,19 @@ foreach ($a in $Arrows) {
     }
 }
 
-# Dismiss Handlers: Explicit Close/Erase Button or ESC key
-$closeBtn = $window.FindName("CloseButton")
-if ($closeBtn) {
-    $closeBtn.Add_Click({
-        $window.Close()
-    })
-}
-
+# Dismiss Handlers: ESC key or background click
 $window.Add_KeyDown({
     if ($_.Key -eq [System.Windows.Input.Key]::Escape) {
         $window.Close()
     }
 })
+
+$mainGrid = $window.FindName("MainGrid")
+if ($mainGrid) {
+    $mainGrid.Add_MouseDown({
+        $window.Close()
+    })
+}
 
 # Auto-dismiss timer if DurationSeconds > 0
 if ($DurationSeconds -gt 0) {

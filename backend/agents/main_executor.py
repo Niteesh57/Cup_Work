@@ -41,13 +41,43 @@ class AgentState(str, Enum):
 EXECUTOR_SYSTEM_INSTRUCTION = """You are Hey Jave's Main Desktop Executor, an autonomous Windows automation agent.
 
 Your goal is to execute the user's task on Windows end-to-end:
-1. Analyze the user goal and the provided screen observation (screenshot, windows, interactive UI elements).
+1. Analyze the user goal and the provided screen observation (screenshot, open windows, interactive UI elements).
 2. Before taking action, announce your next step in one concise sentence (read aloud to user).
-3. Execute the appropriate desktop tools (e.g. smart_ui_action, uia_invoke, uia_set_value, keyboard_type, press_hotkey, launch_app, browser tools).
+3. Execute the appropriate desktop tools (e.g. smart_ui_action, uia_invoke, uia_set_value, keyboard_type, press_hotkey, scroll, launch_app, browser tools).
 4. Verify if the task is complete. If finished, reply with a short confirmation message and stop calling tools.
 
+KEYBOARD-FIRST & DOCUMENT CREATION DIRECTIVES (Word, PowerPoint, Excel, Docs, Code Editors):
+- ALWAYS prefer keyboard shortcuts and commands over mouse clicking when authoring, editing, navigating, or formatting documents and presentations. Use the mouse ONLY for freeform canvas selections, drawing bounding boxes, or dragging.
+- PowerPoint Keyboard Shortcuts:
+  * Insert New Slide: `press_hotkey(modifier="CTRL", key="m")`
+  * Duplicate Slide or Object: `press_hotkey(modifier="CTRL", key="d")`
+  * Navigate Slides: `press_hotkey(modifier="NONE", key="pagedown")` / `pageup`
+  * Cycle shapes & placeholders on slide: `press_hotkey(modifier="NONE", key="tab")` / `shift+tab`
+  * Edit text in selected placeholder/shape: `press_hotkey(modifier="NONE", key="enter")` or `f2`
+  * Exit text editing back to shape container: `press_hotkey(modifier="NONE", key="escape")`
+  * Access Ribbon tabs: `Alt + H` (Home / Layouts / Font / Shapes), `Alt + N` (Insert pictures / tables / text boxes), `Alt + G` (Design / Themes)
+  * Start Presentation: `F5` / `Shift + F5`
+- Word & Document Keyboard Shortcuts:
+  * New: `Ctrl + N`, Open: `Ctrl + O`, Save: `Ctrl + S`, Close: `Ctrl + W`
+  * Bold: `Ctrl + B`, Italic: `Ctrl + I`, Underline: `Ctrl + U`
+  * Align: `Ctrl + E` (Center), `Ctrl + L` (Left), `Ctrl + R` (Right), `Ctrl + J` (Justify)
+  * Headings: `Ctrl + Alt + 1` (H1), `Ctrl + Alt + 2` (H2), `Ctrl + Alt + 3` (H3)
+  * Increase/Decrease Font Size: `Ctrl + Shift + >` / `Ctrl + Shift + <`
+  * Page Break: `Ctrl + Enter`
+  * Ribbon tabs: `Alt + H` (Home), `Alt + N` (Insert table / picture / symbols), `Alt + P` (Layout)
+- General Productivity & Browser Shortcuts:
+  * Address bar: `Ctrl + L`, New Tab: `Ctrl + T`, Close Tab: `Ctrl + W`
+  * Select All: `Ctrl + A`, Copy: `Ctrl + C`, Paste: `Ctrl + V`, Cut: `Ctrl + X`, Undo: `Ctrl + Z`, Redo: `Ctrl + Y`
+
+SCROLLING & LARGE DATA TRAVERSAL DIRECTIVES:
+- When interacting with web search results, tables, long documents, feeds, or large data:
+  * Use the `scroll` tool with negative delta (e.g. `delta: -5` or `delta: -10`) to scroll DOWN through pages, lists, and tables.
+  * Use `scroll` with positive delta (e.g. `delta: 5`) to scroll UP.
+  * You can also use `press_hotkey(modifier="NONE", key="pagedown")` or `uia_scroll_into_view` to bring unseen content into view.
+  * Never assume the initial viewport shows all data—scroll to inspect, collect, or act on full datasets.
+
 Rules:
-- Prefer semantic UI Automation tools (smart_ui_action, uia_invoke, uia_set_value) and browser tools over blind mouse clicking.
+- Prefer semantic UI Automation tools (smart_ui_action, uia_invoke, uia_set_value), keyboard shortcuts, and browser tools over blind mouse clicking.
 - If an application is already open, reuse its window.
 - Use `ask_human` if you require human confirmation, sensitive decisions, or credentials.
 - When done, return a clear summary message."""
@@ -58,6 +88,8 @@ OBSERVATION_TOOLS = {
     "get_active_window",
     "get_open_windows",
     "get_screen_resolution",
+    "scroll",
+    "uia_scroll_into_view",
     "uia_get_tree",
     "uia_get_interactive_elements",
     "uia_search_elements",
@@ -167,6 +199,7 @@ class MainExecutorAgent:
         mime_type: Optional[str] = None,
         model: Optional[str] = None,
         user_id: str = "default",
+        device_id: str = "desktop-main",
     ) -> Dict[str, Any]:
         task_id = task_id or f"task-{uuid.uuid4().hex[:8]}"
         model_name = model or self._model_name
@@ -224,21 +257,28 @@ class MainExecutorAgent:
                     logger.warning(f"Failed to attach audio bytes: {e}")
 
             contents: List[types.Content] = [types.Content(role="user", parts=obs_parts)]
-            memory_manager.add_turn(user_id, "USER", prompt or "[Voice Action]")
-            system_instruction = EXECUTOR_SYSTEM_INSTRUCTION
+            agent_context = memory_manager.get_agent_context(user_id=user_id, device_id=device_id)
+            memory_manager.add_turn(user_id, "USER", prompt or "[Voice Action]", device_id=device_id, session_id=task_id)
+            system_instruction = f"{EXECUTOR_SYSTEM_INSTRUCTION}\n\n=== USER CONTEXT (PREFERENCES, TODOS, CONVERSATION) ===\n{agent_context}" if agent_context else EXECUTOR_SYSTEM_INSTRUCTION
 
             client = get_genai_client()
             tools = get_desktop_tools()
 
             while actions < self._max_actions and llm_calls < self._max_llm_calls:
                 if control.cancel_requested.is_set():
-                    return self._finish(task_id, False, "Task cancelled by user.", steps, AgentState.FAILED, user_id)
+                    return self._finish(task_id, False, "Task cancelled by user.", steps, AgentState.FAILED, user_id, device_id)
                 if not await control.wait_if_paused():
-                    return self._finish(task_id, False, "Task cancelled by user.", steps, AgentState.FAILED, user_id)
+                    return self._finish(task_id, False, "Task cancelled by user.", steps, AgentState.FAILED, user_id, device_id)
 
                 llm_calls += 1
                 await self._set_state(task_id, AgentState.PLANNING)
                 await event_bus.publish(EventType.THINKING, {"taskId": task_id})
+
+                # Ensure conversation history does not end with model role before calling generate_content
+                while len(contents) > 1 and contents[-1].role == "model":
+                    contents.pop()
+                if contents and contents[-1].role == "model":
+                    contents.append(types.Content(role="user", parts=[types.Part.from_text(text="Continue executing task.")]))
 
                 def _call_model():
                     return client.models.generate_content(
@@ -255,7 +295,7 @@ class MainExecutorAgent:
                 candidate = response.candidates[0] if response.candidates else None
                 if not candidate or not candidate.content:
                     final_text = "Task complete."
-                    return self._finish(task_id, True, final_text, steps, AgentState.COMPLETED, user_id)
+                    return self._finish(task_id, True, final_text, steps, AgentState.COMPLETED, user_id, device_id)
 
                 contents.append(candidate.content)
                 function_calls = [p.function_call for p in candidate.content.parts if p.function_call is not None]
@@ -271,7 +311,7 @@ class MainExecutorAgent:
                     verdict = await goal_verifier.check(prompt, screenshot) if screenshot else VerificationResult(True, 1.0, "")
                     if verdict.passed:
                         final_text = narrative or "Task complete."
-                        return self._finish(task_id, True, final_text, steps, AgentState.COMPLETED, user_id)
+                        return self._finish(task_id, True, final_text, steps, AgentState.COMPLETED, user_id, device_id)
 
                     contents.append(types.Content(
                         role="user",
@@ -281,6 +321,8 @@ class MainExecutorAgent:
 
                 # Execute tool calls
                 tool_response_parts: List[types.Part] = []
+                observation_image_parts: List[types.Part] = []
+
                 for fc in function_calls:
                     func_name = fc.name
                     func_args = dict(fc.args) if fc.args else {}
@@ -315,12 +357,29 @@ class MainExecutorAgent:
                                 except Exception:
                                     pass
 
+                    await electron_bridge.broadcast({
+                        "type": "AGENT_STEP_UPDATE",
+                        "taskId": task_id,
+                        "step": {
+                            "id": f"step-{uuid.uuid4().hex[:6]}",
+                            "agentName": "main_executor",
+                            "actionName": func_name,
+                            "thought": narrative or f"Desktop Executor running {func_name}",
+                            "parameters": func_args,
+                            "result": clean_res,
+                            "success": step_result.get("success", True),
+                            "durationMs": step_result.get("durationMs", 0),
+                            "timestamp": time.strftime("%H:%M:%S"),
+                        },
+                    })
+
+                    # Gemini API strictly requires role='tool' parts to ONLY be FunctionResponse
                     tool_response_parts.append(types.Part.from_function_response(
                         name=func_name,
                         response={"result": clean_res},
                     ))
                     if screenshot_bytes:
-                        tool_response_parts.append(types.Part.from_bytes(
+                        observation_image_parts.append(types.Part.from_bytes(
                             data=screenshot_bytes,
                             mime_type="image/png",
                         ))
@@ -328,23 +387,30 @@ class MainExecutorAgent:
                 if tool_response_parts:
                     contents.append(types.Content(role="tool", parts=tool_response_parts))
 
+                if observation_image_parts:
+                    contents.append(types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text="[Current Screenshot observation]")] + observation_image_parts,
+                    ))
+
                 # Prune older inline image parts in conversation history if more than 3 screenshots exist
                 all_image_parts = []
                 for c in contents:
-                    for p in c.parts:
-                        if getattr(p, "inline_data", None) is not None:
-                            all_image_parts.append(p)
+                    if c.parts:
+                        for p in c.parts:
+                            if getattr(p, "inline_data", None) is not None:
+                                all_image_parts.append(p)
                 if len(all_image_parts) > 3:
                     for old_img in all_image_parts[:-3]:
                         old_img.inline_data = None
                         old_img.text = "[Older screenshot pruned for token budget]"
 
 
-            return self._finish(task_id, True, "Completed all planned steps.", steps, AgentState.COMPLETED, user_id)
+            return self._finish(task_id, True, "Completed all planned steps.", steps, AgentState.COMPLETED, user_id, device_id)
 
         except Exception as e:
             logger.exception(f"Executor error on task {task_id}: {e}")
-            return self._finish(task_id, False, f"Error during execution: {e}", steps, AgentState.FAILED, user_id)
+            return self._finish(task_id, False, f"Error during execution: {e}", steps, AgentState.FAILED, user_id, device_id)
 
     async def _execute_tool(self, tool_name: str, args: Dict[str, Any], task_id: str) -> Dict[str, Any]:
         started_ms = int(time.time() * 1000)
@@ -379,9 +445,9 @@ class MainExecutorAgent:
         except Exception:
             return None
 
-    def _finish(self, task_id: str, success: bool, message: str, steps: List[Dict[str, Any]], state: AgentState, user_id: str) -> Dict[str, Any]:
+    def _finish(self, task_id: str, success: bool, message: str, steps: List[Dict[str, Any]], state: AgentState, user_id: str, device_id: str = "desktop-main") -> Dict[str, Any]:
         sqlite_store.update_agent_session_status(task_id, "COMPLETED" if success else "FAILED", state.value)
-        memory_manager.add_turn(user_id, "AGENT", message)
+        memory_manager.add_turn(user_id=user_id, device_id=device_id, role="AGENT", content=message, session_id=task_id)
         event_type = EventType.TASK_COMPLETED if success else EventType.TASK_FAILED
         asyncio.create_task(event_bus.publish(event_type, {"taskId": task_id, "success": success, "result": message}))
         return {

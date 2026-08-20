@@ -11,6 +11,7 @@ from google.genai import types
 
 from backend.agents import executor_manager, root_agent
 from backend.core.client import get_genai_client
+from backend.memory.memory_manager import memory_manager
 
 logger = logging.getLogger("hey_jave.adk")
 
@@ -48,27 +49,30 @@ class AdkRunner:
         audio_base64: Optional[str] = None,
         mime_type: Optional[str] = "audio/wav",
         user_id: str = "default",
+        device_id: str = "desktop-main",
         task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         import base64
         import time
+        import uuid
+        from backend.bridge.electron_bridge import electron_bridge
 
         session_id = task_id or f"adk-session-{abs(hash(user_id + (prompt or '') + str(time.time())))}"
         parts: list[types.Part] = []
 
-        # 1. Automatically capture and attach the current screen for ALL agents & sub-agents
-        try:
-            from backend.bridge.electron_bridge import electron_bridge
-            shot = await electron_bridge.execute_tool("take_screenshot", {}, task_id=session_id)
-            screenshot_b64 = shot.get("base64") if isinstance(shot, dict) else None
-            if screenshot_b64:
-                raw_bytes = base64.b64decode(screenshot_b64)
-                logger.info(f"Attached live desktop screenshot to ADK message ({len(raw_bytes)} bytes)")
-                parts.append(types.Part.from_bytes(data=raw_bytes, mime_type="image/png"))
-        except Exception as e:
-            logger.warning(f"Could not auto-capture initial screenshot: {e}")
+        # Fetch active user preferences, active todos, and short-term context
+        agent_context = memory_manager.get_agent_context(user_id=user_id, device_id=device_id)
 
-        # 2. Attach spoken voice audio if provided
+        # Record user turn in short-term memory
+        memory_manager.add_turn(
+            user_id=user_id,
+            device_id=device_id,
+            role="USER",
+            content=prompt or "[Voice Action]",
+            session_id=session_id,
+        )
+
+        # 1. Attach spoken voice audio if provided
         if audio_base64:
             try:
                 audio_bytes = base64.b64decode(audio_base64)
@@ -77,12 +81,14 @@ class AdkRunner:
             except Exception as e:
                 logger.error(f"Failed to decode audio bytes for ADK: {e}")
 
+        # 2. Attach prompt with injected context
+        context_header = f"[ACTIVE CONTEXT - PREFERENCES & TODOS]\n{agent_context}\n\n[USER COMMAND]\n" if agent_context else ""
         if prompt:
-            parts.append(types.Part.from_text(text=prompt))
+            parts.append(types.Part.from_text(text=f"{context_header}{prompt}"))
         elif audio_base64:
-            parts.append(types.Part.from_text(text="Listen to the user's spoken voice command in the attached audio and execute the requested desktop actions based on the attached screen."))
+            parts.append(types.Part.from_text(text=f"{context_header}Listen to the user's spoken voice command in the attached audio and execute the requested actions or whiteboard lecture."))
         else:
-            parts.append(types.Part.from_text(text=""))
+            parts.append(types.Part.from_text(text=context_header))
 
         new_message = types.Content(
             role="user",
@@ -93,6 +99,14 @@ class AdkRunner:
         final_text = ""
         agent_texts: list[str] = []
         events = []
+
+        # Notify frontend of task start
+        await electron_bridge.broadcast({
+            "type": "TASK_START",
+            "taskId": session_id,
+            "prompt": prompt or "[Voice Action]",
+            "activeAgent": "root",
+        })
 
         try:
             async for event in self._runner.run_async(
@@ -118,6 +132,51 @@ class AdkRunner:
                     }
 
                 events.append(event)
+
+                # Broadcast active agent taking charge & state change
+                author = event.author or "root"
+                if author != "user":
+                    has_tools = False
+                    thought_text = ""
+                    if event.content and event.content.parts:
+                        thought_text = "\n".join(p.text for p in event.content.parts if getattr(p, "text", None)).strip()
+                        for p in event.content.parts:
+                            fc = getattr(p, "function_call", None)
+                            if fc:
+                                has_tools = True
+                                # Clean function args
+                                raw_args = dict(fc.args) if fc.args else {}
+                                clean_args = {}
+                                for k, v in raw_args.items():
+                                    if isinstance(v, str) and len(v) > 200 and k.lower().endswith(("base64", "bytes", "data")):
+                                        clean_args[k] = f"[base64 payload {len(v)} chars]"
+                                    else:
+                                        clean_args[k] = v
+
+                                step_dict = {
+                                    "id": f"step-{uuid.uuid4().hex[:6]}",
+                                    "agentName": author,
+                                    "actionName": fc.name,
+                                    "thought": thought_text or f"Active agent {author} invoking {fc.name}",
+                                    "parameters": clean_args,
+                                    "timestamp": time.strftime("%H:%M:%S"),
+                                    "success": True,
+                                }
+                                await electron_bridge.broadcast({
+                                    "type": "AGENT_STEP_UPDATE",
+                                    "taskId": session_id,
+                                    "step": step_dict,
+                                    "activeAgent": author,
+                                })
+
+                    await electron_bridge.broadcast({
+                        "type": "STATE_CHANGE",
+                        "taskId": session_id,
+                        "activeAgent": author,
+                        "agentName": author,
+                        "state": "acting" if has_tools else "planning",
+                    })
+
                 if event.content and event.content.parts:
                     text = "\n".join(p.text for p in event.content.parts if p.text).strip()
                     if text and event.author not in ("user",):
@@ -127,9 +186,19 @@ class AdkRunner:
             if not final_text and agent_texts:
                 final_text = agent_texts[-1]
 
+            final_msg = final_text or "Task complete."
+            # Record agent turn in short-term memory
+            memory_manager.add_turn(
+                user_id=user_id,
+                device_id=device_id,
+                role="AGENT",
+                content=final_msg,
+                session_id=session_id,
+            )
+
             return {
                 "success": True,
-                "message": final_text or "Task complete.",
+                "message": final_msg,
                 "taskId": session_id,
                 "events": events,
             }
@@ -138,3 +207,4 @@ class AdkRunner:
 
 
 adk_runner = AdkRunner()
+

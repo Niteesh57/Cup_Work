@@ -739,6 +739,44 @@ DESKTOP_FUNCTION_DECLARATIONS = [
         )
     ),
     types.FunctionDeclaration(
+        name="scroll",
+        description=(
+            "Scrolls the active window, document, table, or web page up or down. "
+            "Use delta < 0 (e.g. delta: -5 or delta: -10) to scroll DOWN through long pages, tables, lists, Word documents, PowerPoint slides, search results, or web feeds. "
+            "Use delta > 0 (e.g. delta: 5) to scroll UP. Optionally specify x, y coordinates to scroll over a specific element."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "delta": types.Schema(
+                    type=types.Type.INTEGER,
+                    description="Scroll amount: negative (-3 to -10) to scroll DOWN, positive (3 to 10) to scroll UP."
+                ),
+                "x": types.Schema(
+                    type=types.Type.INTEGER,
+                    description="Optional screen X coordinate over which to scroll"
+                ),
+                "y": types.Schema(
+                    type=types.Type.INTEGER,
+                    description="Optional screen Y coordinate over which to scroll"
+                )
+            },
+            required=["delta"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="uia_scroll_into_view",
+        description="Scrolls a target UI element or list item into view in Windows applications.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "name": types.Schema(type=types.Type.STRING, description="Accessible name of the UI element"),
+                "controlType": types.Schema(type=types.Type.STRING, description="Optional UIA control type"),
+                "windowTitle": types.Schema(type=types.Type.STRING, description="Optional window title filter")
+            }
+        )
+    ),
+    types.FunctionDeclaration(
         name="browser_wait_for_selector",
         description="Waits up to timeoutMs for a DOM element matching a CSS selector to appear (e.g. page loaded, search results rendered).",
         parameters=types.Schema(
@@ -750,8 +788,106 @@ DESKTOP_FUNCTION_DECLARATIONS = [
             required=["selector"]
         )
     ),
+    types.FunctionDeclaration(
+        name="set_user_preference",
+        description="Records or updates a user preference, habit, or liking. Status can be 'present' (active) or 'expired' (outdated).",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "key": types.Schema(type=types.Type.STRING, description="Preference key or topic (e.g. 'favorite_frontend_framework', 'current_employer', 'theme')"),
+                "value": types.Schema(type=types.Type.STRING, description="Preference value (e.g. 'Next.js', 'Google', 'dark')"),
+                "status": types.Schema(type=types.Type.STRING, description="'present' for current active preference or 'expired' for old/superseded preference (default 'present')"),
+                "category": types.Schema(type=types.Type.STRING, description="Category: 'coding', 'career', 'tools', 'workflow', 'general' (default 'general')"),
+                "deviceId": types.Schema(type=types.Type.STRING, description="Optional device scope or 'all' (default 'all')")
+            },
+            required=["key", "value"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="expire_user_preference",
+        description="Marks an existing user preference as 'expired' when the user changes their mind or facts change (e.g. moved away from React to Next.js).",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "key": types.Schema(type=types.Type.STRING, description="Preference key to expire"),
+                "category": types.Schema(type=types.Type.STRING, description="Optional category filter")
+            },
+            required=["key"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="get_user_preferences",
+        description="Retrieves user preferences and likings filtered by status ('present' vs 'expired') or category.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "status": types.Schema(type=types.Type.STRING, description="Filter by status: 'present', 'expired', or omit for all"),
+                "category": types.Schema(type=types.Type.STRING, description="Filter by category")
+            }
+        )
+    ),
+    types.FunctionDeclaration(
+        name="create_todo_task",
+        description="Creates a new actionable todo item or task for the user.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "title": types.Schema(type=types.Type.STRING, description="Title or concise description of the task"),
+                "description": types.Schema(type=types.Type.STRING, description="Optional detailed notes or steps for the task"),
+                "priority": types.Schema(type=types.Type.STRING, description="Priority: 'low', 'medium', 'high', or 'urgent' (default 'medium')"),
+                "dueDate": types.Schema(type=types.Type.INTEGER, description="Optional due date unix timestamp in milliseconds"),
+                "tags": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING),
+                    description="Optional list of tags or labels"
+                )
+            },
+            required=["title"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="update_todo_task",
+        description="Updates an existing todo task's status ('in_progress', 'completed', 'cancelled'), priority, or details.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "taskId": types.Schema(type=types.Type.STRING, description="ID of the todo task to update"),
+                "status": types.Schema(type=types.Type.STRING, description="New status: 'pending', 'in_progress', 'completed', 'cancelled'"),
+                "priority": types.Schema(type=types.Type.STRING, description="New priority: 'low', 'medium', 'high', 'urgent'"),
+                "title": types.Schema(type=types.Type.STRING, description="Updated task title"),
+                "description": types.Schema(type=types.Type.STRING, description="Updated task description")
+            },
+            required=["taskId"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="list_todo_tasks",
+        description="Lists the user's todo tasks filtered by status ('pending', 'in_progress', 'completed', or all) and priority.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "status": types.Schema(type=types.Type.STRING, description="Filter by status: 'pending', 'in_progress', 'completed', or omit for active tasks"),
+                "priority": types.Schema(type=types.Type.STRING, description="Filter by priority: 'low', 'medium', 'high', 'urgent'")
+            }
+        )
+    ),
+    types.FunctionDeclaration(
+        name="log_activity_event",
+        description="Logs an important activity or milestone to the user's permanent Long-Term Memory timeline.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "activityType": types.Schema(type=types.Type.STRING, description="Type: 'action', 'milestone', 'summary', 'learning'"),
+                "title": types.Schema(type=types.Type.STRING, description="Brief headline of the activity"),
+                "content": types.Schema(type=types.Type.STRING, description="Full activity summary or details"),
+                "importance": types.Schema(type=types.Type.NUMBER, description="Importance score 0.0 to 2.0 (default 1.0)")
+            },
+            required=["activityType", "title", "content"]
+        )
+    ),
 ]
 
 def get_desktop_tools() -> List[types.Tool]:
     """Returns the list of GenAI tools wrapping all desktop automation functions."""
     return [types.Tool(function_declarations=DESKTOP_FUNCTION_DECLARATIONS)]
+

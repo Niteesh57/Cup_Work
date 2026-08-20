@@ -37,3 +37,98 @@ def get_available_models() -> List[Dict[str, Any]]:
 
 def get_default_model() -> str:
     return DEFAULT_MODEL_ID
+
+
+# ── Pydantic Request Models ───────────────────────────────────────────────────
+class DeviceRegisterRequest(BaseModel):
+    deviceId: Optional[str] = None
+    userId: Optional[str] = None
+    deviceName: Optional[str] = None
+    deviceType: Optional[str] = "desktop"
+    osInfo: Optional[str] = None
+
+
+class UserUpdateRequest(BaseModel):
+    userId: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class DeviceRenameRequest(BaseModel):
+    deviceId: str
+    deviceName: str
+
+
+class ChatRequest(BaseModel):
+    prompt: Optional[str] = None
+    audioBase64: Optional[str] = None
+    mimeType: Optional[str] = "audio/wav"
+    taskId: Optional[str] = None
+    userId: Optional[str] = None
+    deviceId: Optional[str] = None
+    deviceName: Optional[str] = None
+    model: Optional[str] = None
+    apiKey: Optional[str] = None
+
+
+class StopRequest(BaseModel):
+    taskId: str
+
+
+class TranscribeRequest(BaseModel):
+    audioBase64: str
+    mimeType: Optional[str] = "audio/wav"
+    apiKey: Optional[str] = None
+
+
+class FactRequest(BaseModel):
+    userId: Optional[str] = "default"
+    key: str
+    value: str
+
+
+class PreferenceRequest(BaseModel):
+    userId: Optional[str] = "default"
+    deviceId: Optional[str] = "all"
+    key: str
+    value: str
+    status: Optional[str] = "present"
+    category: Optional[str] = "general"
+    confidence: Optional[float] = 1.0
+
+
+class ExpirePreferenceRequest(BaseModel):
+    userId: Optional[str] = "default"
+    key: str
+    category: Optional[str] = None
+
+
+class CreateTodoRequest(BaseModel):
+    userId: Optional[str] = "default"
+    deviceId: Optional[str] = "desktop-main"
+    title: str
+    description: Optional[str] = None
+    priority: Optional[str] = "medium"
+    dueDate: Optional[int] = None
+    tags: Optional[List[str]] = None
+
+
+class UpdateTodoRequest(BaseModel):
+    userId: Optional[str] = "default"
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    dueDate: Optional[int] = None
+    tags: Optional[List[str]] = None
+
+
+class LogActivityRequest(BaseModel):
+    userId: Optional[str] = "default"
+    deviceId: Optional[str] = "desktop-main"
+    activityType: str
+    title: str
+    content: str
+    details: Optional[Dict[str, Any]] = None
+    importance: Optional[float] = 1.0

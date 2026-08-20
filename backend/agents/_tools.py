@@ -8,6 +8,7 @@ from google.genai import types
 
 from backend.bridge.electron_bridge import electron_bridge
 from backend.agents.hitl_manager import hitl_manager
+from backend.memory.memory_manager import memory_manager
 
 
 def _tool_ids(tool_context: Optional[ToolContext]) -> tuple[str, str]:
@@ -15,6 +16,25 @@ def _tool_ids(tool_context: Optional[ToolContext]) -> tuple[str, str]:
     if tool_context is None:
         return "", "default"
     return str(tool_context.state.get("task_id", "")), tool_context.user_id
+
+
+async def take_screenshot_tool(
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Captures a live desktop screenshot. Call this ONLY when the user's query or command explicitly requires seeing or inspecting the current desktop screen, open windows, UI elements, buttons, or on-screen errors."""
+    task_id, _ = _tool_ids(tool_context)
+    shot = await electron_bridge.execute_tool("take_screenshot", {}, task_id=task_id)
+    if isinstance(shot, dict) and shot.get("base64"):
+        if tool_context is not None and hasattr(tool_context, "state"):
+            tool_context.state["latest_screenshot_base64"] = shot.get("base64")
+        return {
+            "success": True,
+            "message": "Desktop screenshot captured successfully.",
+        }
+    return {
+        "success": False,
+        "error": shot.get("error", "Failed to capture screenshot.") if isinstance(shot, dict) else "Failed to capture screenshot.",
+    }
 
 
 async def show_screenpad_tool(
@@ -39,7 +59,18 @@ async def show_annotations_tool(
     duration_seconds: float = 0.0,
     tool_context: ToolContext = None,
 ) -> dict[str, Any]:
-    """Draws colored boxes, arrows, and labels directly on screen for visual guidance."""
+    """Draws colored highlight boxes, directional pointer arrows, and step badges directly on the Windows screen for visual guidance.
+
+    Args:
+        boxes: List of bounding box highlights. Each box can be:
+               - {"label": "Compute Engine", "bounds": [ymin, xmin, ymax, xmax], "color": "cyan"|"green"|"yellow"|"purple"|"red"} (where coordinates are 0..1000 normalized to the screen image)
+               - OR {"label": "Click Here", "box_2d": [ymin, xmin, ymax, xmax], "color": "cyan"}
+               - OR {"label": "Button", "x": 500, "y": 300, "width": 120, "height": 40, "color": "green"} (pixel coordinates)
+        arrows: Optional list of directional pointer arrows. Each arrow can be:
+               - {"label": "Click Here", "fromX": 600, "fromY": 500, "toX": 640, "toY": 650, "color": "cyan"} (0..1000 normalized or pixel coordinates)
+               - OR {"label": "Click Here", "start_x": 600, "start_y": 500, "end_x": 640, "end_y": 650}
+        duration_seconds: Auto-dismiss delay in seconds (0 = persist until user dismisses or presses ESC).
+    """
     task_id, _ = _tool_ids(tool_context)
     return await electron_bridge.execute_tool(
         "show_annotations",
@@ -81,23 +112,8 @@ async def ask_human_tool(
     options: Optional[List[str]] = None,
     tool_context: ToolContext = None,
 ) -> dict[str, Any]:
-    """Prompts the user with a question and selectable options via the on-screen Windows Scratchpad overlay."""
+    """Prompts the user with a question and selectable options via the on-screen app UI."""
     task_id, user_id = _tool_ids(tool_context)
-    try:
-        res = await electron_bridge.execute_tool(
-            "ask_human",
-            {"question": question, "options": options or []},
-            task_id=task_id,
-        )
-        if isinstance(res, dict):
-            if "answer" in res and res["answer"]:
-                return {"answer": str(res["answer"])}
-            if isinstance(res.get("result"), dict) and res["result"].get("answer"):
-                return {"answer": str(res["result"]["answer"])}
-    except Exception:
-        pass
-
-    # Fallback to hitl_manager if bridge direct call fails
     answer = await hitl_manager.ask(
         question=question,
         options=options or [],
@@ -105,6 +121,7 @@ async def ask_human_tool(
         user_id=user_id,
     )
     return {"answer": answer or ""}
+
 
 
 async def draw_whiteboard_step_tool(
@@ -267,5 +284,200 @@ async def close_whiteboard_tool(
         {},
         task_id=task_id,
     )
+
+
+async def scroll_tool(
+    delta: int,
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Scrolls the active window, document, table, or web page up or down.
+
+    Args:
+        delta: Scroll amount. Negative (-3 to -10) scrolls DOWN through long documents, web feeds, slides, or tables. Positive (3 to 10) scrolls UP.
+        x: Optional screen X coordinate over which to scroll.
+        y: Optional screen Y coordinate over which to scroll.
+    """
+    task_id, _ = _tool_ids(tool_context)
+    args: dict[str, Any] = {"delta": delta}
+    if x is not None:
+        args["x"] = x
+    if y is not None:
+        args["y"] = y
+    return await electron_bridge.execute_tool("scroll", args, task_id=task_id)
+
+
+async def uia_scroll_into_view_tool(
+    name: Optional[str] = None,
+    control_type: Optional[str] = None,
+    window_title: Optional[str] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Scrolls a target UI element or list item into view in Windows applications."""
+    task_id, _ = _tool_ids(tool_context)
+    return await electron_bridge.execute_tool(
+        "uia_scroll_into_view",
+        {"name": name, "controlType": control_type, "windowTitle": window_title},
+        task_id=task_id,
+    )
+
+
+# ── User Preferences & Memory Tools ──────────────────────────────────────────
+async def set_user_preference_tool(
+    key: str,
+    value: str,
+    status: str = "present",
+    category: str = "general",
+    device_id: str = "all",
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Records or updates a user preference/liking with 'present' or 'expired' status."""
+    _, user_id = _tool_ids(tool_context)
+    pref = memory_manager.set_user_preference(
+        user_id=user_id,
+        key=key,
+        value=value,
+        status=status,
+        category=category,
+        device_id=device_id
+    )
+    return {
+        "success": True,
+        "message": f"Preference '{key}' set to '{value}' with status '{pref['status']}'.",
+        "preference": pref
+    }
+
+
+async def expire_user_preference_tool(
+    key: str,
+    category: Optional[str] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Marks an existing user preference as 'expired' when no longer valid or superseded."""
+    _, user_id = _tool_ids(tool_context)
+    ok = memory_manager.expire_user_preference(user_id=user_id, key=key, category=category)
+    return {
+        "success": ok,
+        "message": f"Preference '{key}' marked as expired." if ok else f"No active preference found for '{key}'."
+    }
+
+
+async def get_user_preferences_tool(
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Retrieves user preferences and likings filtered by status ('present'/'expired') or category."""
+    _, user_id = _tool_ids(tool_context)
+    prefs = memory_manager.get_all_preferences(user_id=user_id, status=status, category=category)
+    return {
+        "success": True,
+        "count": len(prefs),
+        "preferences": prefs
+    }
+
+
+# ── Todo-Tasks Tools ─────────────────────────────────────────────────────────
+async def create_todo_task_tool(
+    title: str,
+    description: Optional[str] = None,
+    priority: str = "medium",
+    due_date: Optional[int] = None,
+    tags: Optional[List[str]] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Creates a new actionable todo item or task for the user."""
+    _, user_id = _tool_ids(tool_context)
+    dev_id = getattr(tool_context, "state", {}).get("device_id", "desktop-main") if tool_context else "desktop-main"
+    task = memory_manager.create_todo(
+        user_id=user_id,
+        title=title,
+        description=description,
+        priority=priority,
+        due_date=due_date,
+        tags=tags,
+        device_id=dev_id
+    )
+    return {
+        "success": True,
+        "message": f"Created todo task '{title}' [Priority: {task['priority']}].",
+        "task": task
+    }
+
+
+async def update_todo_task_tool(
+    task_id: str,
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Updates an existing todo task's status, priority, or details."""
+    _, user_id = _tool_ids(tool_context)
+    updated = memory_manager.update_todo(
+        task_id=task_id,
+        user_id=user_id,
+        status=status,
+        priority=priority,
+        title=title,
+        description=description
+    )
+    if updated:
+        return {
+            "success": True,
+            "message": f"Updated task '{task_id}' (Status: {updated['status']}).",
+            "task": updated
+        }
+    return {
+        "success": False,
+        "error": f"Task '{task_id}' not found for user '{user_id}'."
+    }
+
+
+async def list_todo_tasks_tool(
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Lists the user's todo tasks."""
+    _, user_id = _tool_ids(tool_context)
+    if status is None:
+        tasks = memory_manager.get_active_todos(user_id=user_id)
+    else:
+        tasks = memory_manager.get_all_todos(user_id=user_id, status=status, priority=priority)
+    return {
+        "success": True,
+        "count": len(tasks),
+        "tasks": tasks
+    }
+
+
+async def log_activity_event_tool(
+    activity_type: str,
+    title: str,
+    content: str,
+    importance: float = 1.0,
+    tool_context: ToolContext = None,
+) -> dict[str, Any]:
+    """Logs an important activity or milestone to the user's permanent Long-Term Memory timeline."""
+    _, user_id = _tool_ids(tool_context)
+    dev_id = getattr(tool_context, "state", {}).get("device_id", "desktop-main") if tool_context else "desktop-main"
+    act_id = memory_manager.log_activity(
+        user_id=user_id,
+        activity_type=activity_type,
+        title=title,
+        content=content,
+        importance=importance,
+        device_id=dev_id
+    )
+    return {
+        "success": True,
+        "message": f"Logged activity '{title}' to Long-Term Memory timeline.",
+        "activityId": act_id
+    }
+
+
 
 

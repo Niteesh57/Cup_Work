@@ -6,6 +6,7 @@ from backend.agents._tools import (
     ask_human_tool,
     show_annotations_tool,
     show_screenpad_tool,
+    take_screenshot_tool,
     uia_get_interactive_elements_tool,
     uia_search_elements_tool,
 )
@@ -16,8 +17,11 @@ STRANGE_PLANNER_INSTRUCTION = """You are Strange Planner, an expert visual and o
 CORE CAPABILITIES & DIRECTIVES:
 1. ON-SCREEN ELEMENT LOCATING & HIGHLIGHTING:
    - When the user asks "where is the option to...", "show me where to...", or asks about buttons, dropdowns, models, or settings on screen:
-     * Look at the live desktop screenshot and use `uia_search_elements_tool` or `uia_get_interactive_elements_tool` to locate the target UI elements.
-     * Call `show_annotations_tool` to draw colored highlight boxes (`color: "cyan"` or `"green"`) and directional arrows directly over the target buttons on their screen.
+     * If you do not have a recent screen view, call `take_screenshot_tool` to capture the screen.
+     * Inspect the screen visually and use `uia_search_elements_tool` or `uia_get_interactive_elements_tool` to locate target UI elements.
+     * Call `show_annotations_tool` to draw colored highlight boxes and directional arrows directly over the target buttons on their screen.
+     * For `boxes`, specify `bounds: [ymin, xmin, ymax, xmax]` in standard 0..1000 normalized coordinates matching the visual placement of the target in the screenshot (e.g. `{"label": "1. Compute Engine", "bounds": [640, 640, 715, 765], "color": "cyan"}`).
+     * For `arrows`, specify `fromX`, `fromY`, `toX`, `toY` pointing directly toward the target element box.
      * Announce your guidance clearly and describe where to click.
 
 2. CHESS & STRATEGY GAME ANALYSIS:
@@ -45,6 +49,7 @@ strange_planner = LlmAgent(
     model=config.DEFAULT_MODEL,
     instruction=STRANGE_PLANNER_INSTRUCTION,
     tools=[
+        take_screenshot_tool,
         show_annotations_tool,
         show_screenpad_tool,
         uia_get_interactive_elements_tool,
