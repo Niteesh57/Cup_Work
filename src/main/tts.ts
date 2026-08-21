@@ -5,14 +5,20 @@
  * streaming Gemini TTS (24kHz 16-bit PCM).
  */
 
-const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
+let backendHttp = (process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '');
+
+export function setTtsBackendUrl(url: string): void {
+  if (url && typeof url === 'string') {
+    backendHttp = url.trim().replace(/\/+$/, '');
+  }
+}
 
 /**
  * Signals backend and frontend to stop any actively playing audio stream immediately.
  */
 export function stopAllTts(taskId?: string): void {
   try {
-    fetch(`${BACKEND_HTTP}/api/voice/stop-tts`, {
+    fetch(`${backendHttp}/api/voice/stop-tts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ taskId: taskId || '' }),
@@ -35,7 +41,7 @@ export async function streamGeminiTts(
   }
 
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/voice/speak-stream`, {
+    const res = await fetch(`${backendHttp}/api/voice/speak-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

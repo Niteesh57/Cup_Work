@@ -920,15 +920,12 @@ class SqliteStore:
 
     def get_todo_tasks(self, user_id: str, device_id: Optional[str] = None, status: Optional[str] = None, priority: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
-            query = "SELECT * FROM todo_tasks WHERE user_id = ?"
+            query = "SELECT * FROM todo_tasks WHERE (user_id = ? OR user_id = 'usr_local' OR user_id = 'default')"
             params: List[Any] = [user_id]
-            if device_id and device_id != "all":
-                query += " AND device_id = ?"
-                params.append(device_id)
             if status:
                 query += " AND status = ?"
                 params.append(status.lower())
-            if priority:
+            if priority and priority.lower() not in ('all', ''):
                 query += " AND priority = ?"
                 params.append(priority.lower())
             query += " ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END, created_at DESC"
@@ -947,11 +944,8 @@ class SqliteStore:
 
     def get_active_todo_tasks(self, user_id: str, device_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
-            query = "SELECT * FROM todo_tasks WHERE user_id = ? AND status IN ('pending', 'in_progress')"
+            query = "SELECT * FROM todo_tasks WHERE (user_id = ? OR user_id = 'usr_local' OR user_id = 'default') AND status IN ('pending', 'in_progress')"
             params: List[Any] = [user_id]
-            if device_id and device_id != "all":
-                query += " AND device_id = ?"
-                params.append(device_id)
             query += " ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END, created_at DESC"
 
             cur = conn.execute(query, params)
@@ -968,9 +962,15 @@ class SqliteStore:
 
     def delete_todo_task(self, task_id: str, user_id: str) -> bool:
         with self._get_connection() as conn:
-            cur = conn.execute("DELETE FROM todo_tasks WHERE id = ? AND user_id = ?", (task_id, user_id))
+            cur = conn.execute("DELETE FROM todo_tasks WHERE id = ?", (task_id,))
             conn.commit()
             return cur.rowcount > 0
+
+    def clear_all_todo_tasks(self, user_id: str) -> bool:
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM todo_tasks WHERE user_id = ? OR user_id = 'usr_local' OR user_id = 'default'", (user_id,))
+            conn.commit()
+            return True
 
     # ── Legacy Checkpoints & Logs Support ─────────────────────────────────────
     def save_checkpoint(self, task_id: str, payload: Dict[str, Any], timestamp_ms: int):

@@ -493,8 +493,13 @@ ipcMain.handle('config:get', async () => {
   try {
     const res = await fetch(`${BACKEND_HTTP}/api/config`);
     if (res.ok) {
-      const data = await res.json() as Record<string, unknown>;
-      return { ...data, backendConnected: true };
+      const data = (await res.json()) as Record<string, unknown>;
+      return {
+        ...data,
+        backendConnected: true,
+        geminiVoice: process.env.GEMINI_VOICE || 'Puck',
+        backendUrl: BACKEND_HTTP,
+      };
     }
   } catch (e) {
     console.warn('[config:get] Backend not reachable yet');
@@ -503,6 +508,8 @@ ipcMain.handle('config:get', async () => {
   return {
     backendConnected: false,
     geminiModel: '',
+    geminiVoice: process.env.GEMINI_VOICE || 'Puck',
+    backendUrl: BACKEND_HTTP,
   };
 });
 
@@ -512,6 +519,9 @@ ipcMain.handle('backend:is-connected', () => {
 
 
 ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>) => {
+  if (newConfig?.geminiVoice && typeof newConfig.geminiVoice === 'string') {
+    process.env.GEMINI_VOICE = newConfig.geminiVoice;
+  }
   try {
     const res = await fetch(`${BACKEND_HTTP}/api/config`, {
       method: 'POST',
@@ -864,6 +874,72 @@ ipcMain.handle('todos:create', async (_event, payload: { title: string; priority
     return { success: false };
   }
 });
+
+ipcMain.handle('todos:clear-today', async (_event, payload?: { userId?: string; deviceId?: string }) => {
+  try {
+    const res = await fetch(`${BACKEND_HTTP}/api/todos/clear-today`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: payload?.userId || 'usr_local',
+        deviceId: payload?.deviceId || localDeviceId,
+      }),
+    });
+    if (!res.ok) return { success: false };
+    const data = await res.json();
+    return data;
+  } catch (err: unknown) {
+    console.error('[todos:clear-today] Error:', err);
+    return { success: false };
+  }
+});
+
+// ── Configuration & Backend URL IPC Handlers ─────────────────────────────────
+ipcMain.handle('config:get-backend-url', async () => {
+  return {
+    backendUrl: BACKEND_HTTP,
+    defaultUrl: 'http://127.0.0.1:8765',
+    connected: Boolean(wsClient && wsClient.readyState === WebSocket.OPEN),
+  };
+});
+
+ipcMain.handle('config:set-backend-url', async (_event, payload: { backendUrl: string }) => {
+  try {
+    const cleanUrl = (payload?.backendUrl || '').trim().replace(/\/+$/, '');
+    if (!cleanUrl) {
+      return { success: false, error: 'Invalid URL', connected: false, backendUrl: BACKEND_HTTP };
+    }
+    const testRes = await fetch(`${cleanUrl}/health`).catch(() => null);
+    const connected = Boolean(testRes && testRes.ok);
+    return {
+      success: true,
+      connected,
+      backendUrl: cleanUrl,
+      error: connected ? undefined : 'Backend unreachable at the specified URL',
+    };
+  } catch (err) {
+    return {
+      success: false,
+      connected: false,
+      backendUrl: BACKEND_HTTP,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+ipcMain.handle('config:test-backend-url', async (_event, testUrl: string) => {
+  try {
+    const cleanUrl = (testUrl || '').trim().replace(/\/+$/, '');
+    const res = await fetch(`${cleanUrl}/health`);
+    if (res.ok) {
+      return { success: true, message: 'Backend connected successfully!' };
+    }
+    return { success: false, message: `Backend responded with HTTP ${res.status}` };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to connect to backend' };
+  }
+});
+
 
 
 

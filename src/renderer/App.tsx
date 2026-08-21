@@ -89,6 +89,8 @@ export default function App() {
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [commentary, setCommentary] = useState('');
   const [backendConnected, setBackendConnected] = useState<boolean>(false);
+  const [backendUrl, setBackendUrl] = useState<string>('http://127.0.0.1:8765');
+  const [defaultBackendUrl, setDefaultBackendUrl] = useState<string>('http://127.0.0.1:8765');
   const [currentVoice, setCurrentVoice] = useState<string>('Kore');
   const [todoCounts, setTodoCounts] = useState<TodoCounts>({ total: 0, pending: 0, done: 0 });
   const [todoTasks, setTodoTasks] = useState<TodoTask[]>([]);
@@ -327,23 +329,55 @@ export default function App() {
     }
   }, [userIdentity.userId, fetchTodayTodos]);
 
+  const handleClearTodos = useCallback(async () => {
+    try {
+      setTodoTasks([]);
+      setTodoCounts({ total: 0, pending: 0, done: 0 });
+      await ipc()?.invoke('todos:clear-today', {
+        userId: userIdentity.userId || 'usr_local',
+        deviceId: userIdentity.deviceId || 'desktop-main',
+      });
+      fetchTodayTodos();
+    } catch (err) {
+      console.error('[App] Failed to clear todos:', err);
+    }
+  }, [userIdentity.userId, userIdentity.deviceId, fetchTodayTodos]);
+
   const fetchConfig = useCallback(async () => {
     try {
-      const res = (await ipc()?.invoke('config:get')) as (AppConfig & { geminiVoice?: string }) | undefined;
+      const res = (await ipc()?.invoke('config:get')) as (AppConfig & { geminiVoice?: string; backendUrl?: string }) | undefined;
       if (res) {
         setConfig(res);
         setBackendConnected(Boolean(res.backendConnected));
         if (res.geminiVoice) setCurrentVoice(res.geminiVoice);
-
+        if (res.backendUrl) setBackendUrl(res.backendUrl);
       }
     } catch (err) {
       console.error('[App] Failed to fetch config:', err);
     }
   }, []);
 
+  const fetchBackendUrlInfo = useCallback(async () => {
+    try {
+      const res = (await ipc()?.invoke('config:get-backend-url')) as {
+        backendUrl: string;
+        defaultUrl: string;
+        connected: boolean;
+      } | undefined;
+      if (res) {
+        if (res.backendUrl) setBackendUrl(res.backendUrl);
+        if (res.defaultUrl) setDefaultBackendUrl(res.defaultUrl);
+        setBackendConnected(Boolean(res.connected));
+      }
+    } catch (err) {
+      console.error('[App] Failed to fetch backend URL info:', err);
+    }
+  }, []);
+
   useEffect(() => {
     checkDeviceRegistration();
     fetchConfig();
+    fetchBackendUrlInfo();
     fetchTodayTodos();
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -353,7 +387,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [checkDeviceRegistration, fetchConfig, fetchTodayTodos]);
+  }, [checkDeviceRegistration, fetchConfig, fetchBackendUrlInfo, fetchTodayTodos]);
 
 
   /* ── Voice: ambient auto-listening (active ONLY when connected) ── */
@@ -364,6 +398,7 @@ export default function App() {
   const lastUtteranceRef = useRef<{ wavBase64: string; mimeType: string } | null>(null);
   const voiceActiveRef = useRef(false);
   voiceActiveRef.current = recording;
+  const isUserMutedRef = useRef(false);
   const sendPromptRef = useRef<(input: string | ExecuteOptions) => Promise<void>>();
 
   const isBusy = status === 'analyzing' || status === 'executing';
@@ -385,6 +420,27 @@ export default function App() {
     if (message !== undefined) setVoiceStatus(message);
   }, []);
 
+  /* Helper to auto-resume listening when allowed (not muted by user, not executing) */
+  const resumeListeningIfAllowed = useCallback(async () => {
+    if (isUserMutedRef.current) return;
+    if (!backendConnected) return;
+    if (inFlightRef.current || (isTaskRunningRef.current && executorStateRef.current !== 'paused')) return;
+
+    const engine = engineRef.current;
+    if (!engine) return;
+    try {
+      voiceActiveRef.current = true;
+      engine.setMuted(false);
+      await engine.start();
+      engine.activate();
+      setRecording(true);
+      setVoiceStatus('Listening for voice…');
+      showBorderGlow(false, '');
+    } catch (err) {
+      console.error('[App] Auto-resume voice listening failed:', err);
+    }
+  }, [backendConnected, showBorderGlow]);
+
   /* ── Initialize Gemini TTS Streaming Web Audio Player ──────────── */
   useEffect(() => {
     const player = new GeminiAudioStreamPlayer((playing) => {
@@ -392,17 +448,17 @@ export default function App() {
       if (playing) {
         engineRef.current?.setMuted(true);
         engineRef.current?.deactivate();
+        setRecording(false);
         showBorderGlow(true, '🔊 Cup Work is speaking…', 'speaking');
       } else {
         engineRef.current?.setMuted(false);
-        if (voiceActiveRef.current && !inFlightRef.current && engineRef.current) {
-          engineRef.current.activate();
-          setRecording(true);
-          setVoiceStatus('Listening for voice…');
-          showBorderGlow(false, '');
-        } else {
-          showBorderGlow(false, '');
-        }
+        showBorderGlow(false, '');
+        // Automatically reactivate microphone listening after agent finishes speaking
+        setTimeout(() => {
+          if (!isUserMutedRef.current && !inFlightRef.current && backendConnected) {
+            resumeListeningIfAllowed();
+          }
+        }, 350);
       }
     });
     audioPlayerRef.current = player;
@@ -410,7 +466,7 @@ export default function App() {
     return () => {
       player.stop();
     };
-  }, [showBorderGlow]);
+  }, [backendConnected, resumeListeningIfAllowed, showBorderGlow]);
 
   useEffect(() => {
     const engine = new VoiceEngine({
@@ -461,12 +517,13 @@ export default function App() {
     engineRef.current = engine;
 
     return () => {
-      engine.stop().catch(() => {});
+      engine.stop().catch(() => { });
     };
   }, [showBorderGlow]);
 
-  /* Start / Resume listening (Only if backend connected and not actively executing) */
+  /* Start / Resume listening (user action) */
   const startRecording = useCallback(async () => {
+    isUserMutedRef.current = false;
     if (!backendConnected) {
       console.warn('[App] Cannot start voice: Python backend is offline.');
       return;
@@ -479,6 +536,7 @@ export default function App() {
     if (!engine) return;
     try {
       voiceActiveRef.current = true;
+      engine.setMuted(false);
       await engine.start();
       engine.activate();
       setRecording(true);
@@ -493,16 +551,56 @@ export default function App() {
     }
   }, [backendConnected, isTaskRunning, executorState, showBorderGlow]);
 
-  /* Pause / Mute voice listening */
+  /* Pause / Mute voice listening (user action) */
   const cancelRecording = useCallback(() => {
+    isUserMutedRef.current = true;
     voiceActiveRef.current = false;
     const engine = engineRef.current;
     engine?.deactivate();
+    engine?.setMuted(true);
     setRecording(false);
     setVoiceStatus('Mic muted — tap to activate');
     lastUtteranceRef.current = null;
     showBorderGlow(false, '');
   }, [showBorderGlow]);
+
+  /* Backend URL Handlers */
+  const handleUpdateBackendUrl = useCallback(async (newUrl: string): Promise<{ success: boolean; connected?: boolean; error?: string }> => {
+    try {
+      const res = (await ipc()?.invoke('config:set-backend-url', { backendUrl: newUrl })) as {
+        success: boolean;
+        connected: boolean;
+        backendUrl: string;
+        error?: string;
+      } | undefined;
+      if (res && res.success) {
+        setBackendUrl(res.backendUrl);
+        setBackendConnected(Boolean(res.connected));
+        if (res.connected) {
+          checkDeviceRegistration();
+          fetchConfig();
+          fetchTodayTodos();
+        }
+        return { success: true, connected: res.connected, error: res.error };
+      }
+      return { success: false, error: res?.error || 'Failed to update backend URL' };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }, [checkDeviceRegistration, fetchConfig, fetchTodayTodos]);
+
+  const handleTestBackendUrl = useCallback(async (testUrl: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = (await ipc()?.invoke('config:test-backend-url', testUrl)) as {
+        success: boolean;
+        message: string;
+      } | undefined;
+      if (res) return res;
+      return { success: false, message: 'No response from test connection' };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : 'Test connection error' };
+    }
+  }, []);
 
   /* Load config and setup listeners on mount */
   useEffect(() => {
@@ -511,9 +609,10 @@ export default function App() {
 
     renderer.invoke('config:get').then((res) => {
       if (res) {
-        const c = res as AppConfig;
+        const c = res as AppConfig & { backendUrl?: string };
         setConfig(c);
         setBackendConnected(!!c.backendConnected);
+        if (c.backendUrl) setBackendUrl(c.backendUrl);
       }
     }).catch(console.error);
 
@@ -525,10 +624,10 @@ export default function App() {
       setMessages(prev => prev.map(m =>
         m.role === 'agent' && m.status === 'thinking'
           ? {
-              ...m,
-              activeAgent: step.agentName || m.activeAgent || activeAgent,
-              steps: [...(m.steps || []), step]
-            }
+            ...m,
+            activeAgent: step.agentName || m.activeAgent || activeAgent,
+            steps: [...(m.steps || []), step]
+          }
           : m
       ));
       if (step.thought || step.actionName) {
@@ -541,9 +640,16 @@ export default function App() {
       setBackendConnected(st.connected);
       if (st.connected) {
         checkDeviceRegistration();
+        fetchBackendUrlInfo();
         renderer.invoke('config:get').then((res) => {
           if (res) setConfig(res as AppConfig);
         }).catch(console.error);
+        // Auto-start listening on connection if not explicitly muted
+        setTimeout(() => {
+          if (!isUserMutedRef.current) {
+            resumeListeningIfAllowed();
+          }
+        }, 600);
       } else {
         setConfig({ geminiModel: '', backendConnected: false });
         voiceActiveRef.current = false;
@@ -614,14 +720,14 @@ export default function App() {
           return prev.map((m, idx) =>
             idx === prev.length - 1
               ? {
-                  ...m,
-                  hitl: {
-                    id: q.id,
-                    taskId: q.taskId,
-                    question: q.question,
-                    options: q.options || [],
-                  },
-                }
+                ...m,
+                hitl: {
+                  id: q.id,
+                  taskId: q.taskId,
+                  question: q.question,
+                  options: q.options || [],
+                },
+              }
               : m
           );
         } else {
@@ -719,22 +825,18 @@ export default function App() {
       prev.map(m =>
         m.status === 'thinking'
           ? {
-              ...m,
-              status: 'error',
-              text: m.text || 'Task cancelled by user.',
-            }
+            ...m,
+            status: 'error',
+            text: m.text || 'Task cancelled by user.',
+          }
           : m
       )
     );
-    // After calling API to cancel the request, voice can immediately activate
-    if (voiceActiveRef.current && engineRef.current) {
-      engineRef.current.activate();
-      setRecording(true);
-      setVoiceStatus('Listening for voice…');
-    } else {
-      setRecording(false);
-    }
-  }, [showBorderGlow]);
+    // After calling API to cancel the request, voice can immediately activate if allowed
+    setTimeout(() => {
+      resumeListeningIfAllowed();
+    }, 300);
+  }, [resumeListeningIfAllowed, showBorderGlow]);
 
   const handleSelectHitlOption = useCallback(async (hitlId: string, taskId: string, option: string) => {
     try {
@@ -743,12 +845,12 @@ export default function App() {
         prev.map(m =>
           m.hitl?.id === hitlId
             ? {
-                ...m,
-                hitl: {
-                  ...m.hitl,
-                  selectedAnswer: option,
-                },
-              }
+              ...m,
+              hitl: {
+                ...m.hitl,
+                selectedAnswer: option,
+              },
+            }
             : m
         )
       );
@@ -770,7 +872,7 @@ export default function App() {
     const opts: ExecuteOptions = typeof input === 'string' ? { prompt: input } : input;
     const trimmed = opts.prompt?.trim() || '';
     if (!trimmed && !opts.audioBase64) return;
-    
+
     // Strict single-request concurrency lock
     if (inFlightRef.current || (isTaskRunning && executorState !== 'paused')) {
       console.warn('[App] Blocked overlapping request: agent is currently busy.');
@@ -787,7 +889,7 @@ export default function App() {
     console.log('[App] sendPrompt started:', opts.isVoice ? '[Spoken Audio]' : trimmed);
 
     const startTime = Date.now();
-    const userMsgId  = `u-${Date.now()}`;
+    const userMsgId = `u-${Date.now()}`;
     const agentMsgId = `a-${Date.now()}`;
     const currentTaskId = `task-${Date.now()}`;
 
@@ -843,10 +945,10 @@ export default function App() {
 
       const whiteboardStep = response.steps?.find(s => isWbAction(s.actionName));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const extractedWhiteboardData = (response as any).whiteboardData || 
-        (whiteboardStep?.parameters as Record<string, unknown>) || 
+      const extractedWhiteboardData = (response as any).whiteboardData ||
+        (whiteboardStep?.parameters as Record<string, unknown>) ||
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ((whiteboardStep as any)?.args as Record<string, unknown>) || 
+        ((whiteboardStep as any)?.args as Record<string, unknown>) ||
         undefined;
 
       const hadWhiteboardTool = Boolean(
@@ -918,22 +1020,15 @@ export default function App() {
       inFlightRef.current = false;
       setStatus('idle');
       setExecutorState('idle');
-      
-      // Settling buffer before resuming voice listening
-      await new Promise(r => setTimeout(r, 500));
 
-      // Automatically resume voice listening ONLY if voice detection is active
-      if (voiceActiveRef.current && !inFlightRef.current && engineRef.current) {
-        engineRef.current.activate();
-        setRecording(true);
-        setVoiceStatus('Listening for voice…');
-        showBorderGlow(false, '');
-      } else {
-        setRecording(false);
-        showBorderGlow(false, '');
-      }
+      // Auto-resume microphone listening after prompt/task finishes if not muted by user and not speaking
+      setTimeout(() => {
+        if (!audioPlayerRef.current?.isPlaying() && !isSpeaking && !isUserMutedRef.current) {
+          resumeListeningIfAllowed();
+        }
+      }, 450);
     }
-  }, [config.geminiModel, showBorderGlow, userIdentity]);
+  }, [config.geminiModel, isSpeaking, resumeListeningIfAllowed, showBorderGlow, userIdentity]);
 
   sendPromptRef.current = sendPrompt;
 
@@ -968,8 +1063,13 @@ export default function App() {
           onBack={() => setShowSettings(false)}
           userName={userIdentity.userName}
           currentVoice={currentVoice}
+          backendUrl={backendUrl}
+          defaultBackendUrl={defaultBackendUrl}
+          backendConnected={backendConnected}
           onUpdateUserName={handleUpdateUserName}
           onUpdateVoice={handleUpdateVoice}
+          onUpdateBackendUrl={handleUpdateBackendUrl}
+          onTestBackendUrl={handleTestBackendUrl}
           onPreviewVoice={handlePreviewVoice}
         />
       ) : (
@@ -977,310 +1077,308 @@ export default function App() {
           {/* ── Top Bar ── */}
           <header className="topbar">
 
-          <div className="topbar-left flex items-center gap-2">
-            <img
-              src={appIcon}
-              alt="Cup Work"
-              className="w-6 h-6 object-contain rounded-md shadow-2xs"
-            />
-            <span className="logo-name">Cup Work</span>
-          </div>
+            <div className="topbar-left flex items-center gap-2">
+              <img
+                src={appIcon}
+                alt="Cup Work"
+                className="w-6 h-6 object-contain rounded-md shadow-2xs"
+              />
+              <span className="logo-name">Cup Work</span>
+            </div>
 
-          <div className="topbar-center">
-            {backendConnected && config.geminiModel ? (
-              <div
-                className="tooltip tooltip-bottom"
-                data-tip={`Python Brain: ${config.geminiModel} • Status: ${statusLabel()}`}
-              >
-                <div className="model-pill cursor-help">
-                  <span className={`status-dot${isAnimationActive ? ' busy' : ''}${dotClass ? ` ${dotClass}` : ''}`} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {statusLabel()}
-                  </span>
+            <div className="topbar-center">
+              {backendConnected && config.geminiModel ? (
+                <div
+                  className="tooltip tooltip-bottom"
+                  data-tip={`Python Brain: ${config.geminiModel} • Status: ${statusLabel()}`}
+                >
+                  <div className="model-pill cursor-help">
+                    <span className={`status-dot${isAnimationActive ? ' busy' : ''}${dotClass ? ` ${dotClass}` : ''}`} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {statusLabel()}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+            </div>
 
-          <div className="topbar-right flex items-center gap-1.5">
-            {backendConnected && (
-              <div
-                className="tooltip tooltip-bottom"
-                data-tip={
-                  todoCounts.total > 0
-                    ? `Today's Tasks: ${todoCounts.pending} remaining, ${todoCounts.done} completed (Click to view)`
-                    : "Today's Tasks & Todo List (Click to open)"
-                }
-              >
-                <button
-                  className={`btn btn-sm gap-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
+            <div className="topbar-right flex items-center gap-1.5">
+              {backendConnected && (
+                <div
+                  className="tooltip tooltip-bottom"
+                  data-tip={
                     todoCounts.total > 0
-                      ? todoCounts.pending > 0
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-300 hover:bg-amber-500/20'
-                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-300 hover:bg-emerald-500/20'
-                      : 'btn-ghost border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                  }`}
-                  onClick={() => {
-                    fetchTodayTodos();
-                    setShowTodoModal(true);
-                  }}
-                  aria-label="Today's Tasks"
-                >
-                  <ListTodo
-                    size={14}
-                    className={
-                      todoCounts.total > 0
-                        ? todoCounts.pending > 0
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-zinc-600 dark:text-zinc-400'
-                    }
-                  />
-                  <span>
-                    {todoCounts.total > 0 ? (
-                      todoCounts.pending > 0 ? (
-                        <>
-                          <span className="font-bold">{todoCounts.pending}</span> left
-                          {todoCounts.done > 0 && (
-                            <span className="opacity-60 text-[10px] font-normal"> · {todoCounts.done} done</span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="font-bold">{todoCounts.total} done 🎉</span>
-                      )
-                    ) : (
-                      <span>Tasks</span>
-                    )}
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {backendConnected && (
-              <div
-                className="tooltip tooltip-bottom"
-                data-tip="Start New Cup of Coffee (Clears today's chat, todos & short-term memory)"
-              >
-                <button
-                  className="btn btn-sm btn-ghost gap-1.5 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-semibold shadow-2xs transition-all"
-                  onClick={handleStartNewCup}
-                  disabled={isTaskRunning || inFlightRef.current}
-                  aria-label="Start New Cup of Coffee"
-                >
-                  <Coffee size={14} className="text-zinc-600 dark:text-zinc-300" />
-                  <span className="hidden sm:inline">New Cup</span>
-                </button>
-              </div>
-            )}
-
-
-            {backendConnected && (
-              <div
-                className="tooltip tooltip-bottom"
-                data-tip={`Profile & Settings (${userIdentity.userName || 'User'})`}
-              >
-                <button
-                  className="btn btn-sm btn-ghost gap-2 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-semibold shadow-2xs transition-all px-2.5"
-                  onClick={() => setShowSettings(true)}
-                  aria-label="Settings and Profile"
-                >
-                  <MovingColorsAvatar name={userIdentity.userName || 'You'} size="xs" showGlow={false} />
-                  <span className="hidden sm:inline font-bold">{userIdentity.userName || 'Profile'}</span>
-                </button>
-              </div>
-            )}
-
-
-            {backendConnected && (
-              <div
-                className="tooltip tooltip-left"
-                data-tip={
-                  (isTaskRunning && executorState !== 'paused') || inFlightRef.current
-                    ? "Agent is busy executing — microphone disabled until complete or paused"
-                    : recording
-                    ? "Microphone is ON (listening for voice) — click to mute"
-                    : "Microphone is OFF — click to activate voice detection"
-                }
-              >
-                <button
-                  className={`btn btn-circle btn-sm transition-all ${
-                    (isTaskRunning && executorState !== 'paused') || inFlightRef.current
-                      ? 'btn-ghost opacity-40 cursor-not-allowed text-slate-400'
-                      : recording
-                      ? 'btn-success text-white shadow-2xs'
-                      : 'btn-ghost text-slate-400 hover:text-slate-700 hover:bg-slate-200'
-                  }`}
-                  onClick={
-                    (isTaskRunning && executorState !== 'paused') || inFlightRef.current
-                      ? undefined
-                      : recording
-                      ? cancelRecording
-                      : startRecording
+                      ? `Today's Tasks: ${todoCounts.pending} remaining, ${todoCounts.done} completed (Click to view)`
+                      : "Today's Tasks & Todo List (Click to open)"
                   }
-                  disabled={(isTaskRunning && executorState !== 'paused') || inFlightRef.current}
-                  aria-label={recording ? "Mute microphone" : "Activate microphone"}
                 >
-                  {recording ? <Mic size={15} /> : <MicOff size={15} />}
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
+                  <button
+                    className={`btn btn-sm gap-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${todoCounts.total > 0
+                        ? todoCounts.pending > 0
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-300 hover:bg-amber-500/20'
+                          : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-300 hover:bg-emerald-500/20'
+                        : 'btn-ghost border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      }`}
+                    onClick={() => {
+                      fetchTodayTodos();
+                      setShowTodoModal(true);
+                    }}
+                    aria-label="Today's Tasks"
+                  >
+                    <ListTodo
+                      size={14}
+                      className={
+                        todoCounts.total > 0
+                          ? todoCounts.pending > 0
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-zinc-600 dark:text-zinc-400'
+                      }
+                    />
+                    <span>
+                      {todoCounts.total > 0 ? (
+                        todoCounts.pending > 0 ? (
+                          <>
+                            <span className="font-bold">{todoCounts.pending}</span> left
+                            {todoCounts.done > 0 && (
+                              <span className="opacity-60 text-[10px] font-normal"> · {todoCounts.done} done</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="font-bold">{todoCounts.total} done 🎉</span>
+                        )
+                      ) : (
+                        <span>Tasks</span>
+                      )}
+                    </span>
+                  </button>
+                </div>
+              )}
 
-        {/* ── Chat Area ── */}
-        <main className="chat-area" style={{ position: 'relative' }}>
+              {backendConnected && (
+                <div
+                  className="tooltip tooltip-bottom"
+                  data-tip="Start New Cup of Coffee (Clears today's chat, todos & short-term memory)"
+                >
+                  <button
+                    className="btn btn-sm btn-ghost gap-1.5 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-semibold shadow-2xs transition-all"
+                    onClick={handleStartNewCup}
+                    disabled={isTaskRunning || inFlightRef.current}
+                    aria-label="Start New Cup of Coffee"
+                  >
+                    <Coffee size={14} className="text-zinc-600 dark:text-zinc-300" />
+                    <span className="hidden sm:inline">New Cup</span>
+                  </button>
+                </div>
+              )}
 
 
-          {messages.length === 0 ? (
-            <div className="empty-state">
-              <CoffeeCup />
-              {backendConnected ? (
-                <>
-                  <h3>How can I help you today?</h3>
-                  <p>
-                    {recording
-                      ? 'Voice detection is active — speak naturally to control your Windows PC.'
-                      : 'Microphone is OFF — click the microphone button below to activate voice control.'}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h3>Waiting for Brain Connection…</h3>
-                  <p className="text-slate-400">
-                    Python Brain server is offline. Please launch backend to start Cup Work.
-                  </p>
-                </>
+              {backendConnected && (
+                <div
+                  className="tooltip tooltip-bottom"
+                  data-tip={`Profile & Settings (${userIdentity.userName || 'User'})`}
+                >
+                  <button
+                    className="btn btn-sm btn-ghost gap-2 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-semibold shadow-2xs transition-all px-2.5"
+                    onClick={() => setShowSettings(true)}
+                    aria-label="Settings and Profile"
+                  >
+                    <MovingColorsAvatar name={userIdentity.userName || 'You'} size="xs" showGlow={false} />
+                    <span className="hidden sm:inline font-bold">{userIdentity.userName || 'Profile'}</span>
+                  </button>
+                </div>
+              )}
+
+
+              {backendConnected && (
+                <div
+                  className="tooltip tooltip-left"
+                  data-tip={
+                    (isTaskRunning && executorState !== 'paused') || inFlightRef.current
+                      ? "Agent is busy executing — microphone disabled until complete or paused"
+                      : recording
+                        ? "Microphone is ON (listening for voice) — click to mute"
+                        : "Microphone is OFF — click to activate voice detection"
+                  }
+                >
+                  <button
+                    className={`btn btn-circle btn-sm transition-all ${(isTaskRunning && executorState !== 'paused') || inFlightRef.current
+                        ? 'btn-ghost opacity-40 cursor-not-allowed text-slate-400'
+                        : recording
+                          ? 'btn-success text-white shadow-2xs'
+                          : 'btn-ghost text-slate-400 hover:text-slate-700 hover:bg-slate-200'
+                      }`}
+                    onClick={
+                      (isTaskRunning && executorState !== 'paused') || inFlightRef.current
+                        ? undefined
+                        : recording
+                          ? cancelRecording
+                          : startRecording
+                    }
+                    disabled={(isTaskRunning && executorState !== 'paused') || inFlightRef.current}
+                    aria-label={recording ? "Mute microphone" : "Activate microphone"}
+                  >
+                    {recording ? <Mic size={15} /> : <MicOff size={15} />}
+                  </button>
+                </div>
               )}
             </div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between px-3 py-1.5 mb-3 bg-base-200/50 backdrop-blur rounded-xl border border-base-300/40 text-[11px] font-medium text-slate-500 shadow-2xs">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" />
-                  <span className="font-semibold text-slate-700 dark:text-slate-200">Today's Session</span>
-                </span>
-                <div className="flex items-center gap-2">
-                  {todoCounts.total > 0 && (
-                    <button
-                      onClick={() => {
-                        fetchTodayTodos();
-                        setShowTodoModal(true);
-                      }}
-                      className="btn btn-xs btn-ghost gap-1 text-[10px] font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 rounded-md px-2 py-0 border border-zinc-300/60 dark:border-zinc-700 shadow-2xs"
-                    >
-                      <ListTodo size={11} className={todoCounts.pending > 0 ? 'text-amber-600' : 'text-emerald-600'} />
-                      <span>{todoCounts.pending} left · {todoCounts.done} done</span>
-                    </button>
-                  )}
-                  <span className="font-mono text-[10px] text-slate-400">
-                    {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                </div>
+          </header>
+
+          {/* ── Chat Area ── */}
+          <main className="chat-area" style={{ position: 'relative' }}>
+
+
+            {messages.length === 0 ? (
+              <div className="empty-state">
+                <CoffeeCup />
+                {backendConnected ? (
+                  <>
+                    <h3>How can I help you today?</h3>
+                    <p>
+                      {recording
+                        ? 'Voice detection is active — speak naturally to control your Windows PC.'
+                        : 'Microphone is OFF — click the microphone button below to activate voice control.'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3>Waiting for Brain Connection…</h3>
+                    <p className="text-slate-400">
+                      Python Brain server is offline. Please launch backend to start Cup Work.
+                    </p>
+                  </>
+                )}
               </div>
-              {messages.map(msg =>
-                msg.role === 'user'
-                  ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} userName={userIdentity.userName} />
-                  : <AgentMessage
+            ) : (
+              <>
+                <div className="flex items-center justify-between px-3 py-1.5 mb-3 bg-base-200/50 backdrop-blur rounded-xl border border-base-300/40 text-[11px] font-medium text-slate-500 shadow-2xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" />
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">Today's Session</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {todoCounts.total > 0 && (
+                      <button
+                        onClick={() => {
+                          fetchTodayTodos();
+                          setShowTodoModal(true);
+                        }}
+                        className="btn btn-xs btn-ghost gap-1 text-[10px] font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 rounded-md px-2 py-0 border border-zinc-300/60 dark:border-zinc-700 shadow-2xs"
+                      >
+                        <ListTodo size={11} className={todoCounts.pending > 0 ? 'text-amber-600' : 'text-emerald-600'} />
+                        <span>{todoCounts.pending} left · {todoCounts.done} done</span>
+                      </button>
+                    )}
+                    <span className="font-mono text-[10px] text-slate-400">
+                      {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                </div>
+                {messages.map(msg =>
+                  msg.role === 'user'
+                    ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} userName={userIdentity.userName} />
+                    : <AgentMessage
                       key={msg.id}
                       msg={msg}
                       isPaused={executorState === 'paused'}
                       onSelectHitlOption={handleSelectHitlOption}
                     />
-              )}
-            </>
-          )}
+                )}
+              </>
+            )}
 
-          <div ref={chatEndRef} />
-          <CommentaryBanner text={commentary} />
-        </main>
+            <div ref={chatEndRef} />
+            <CommentaryBanner text={commentary} />
+          </main>
 
-        {/* ── Bottom Dock Bar (Voice & Task Execution Controls with DaisyUI Tooltips) ── */}
-        <div className="voice-bar">
-          {isTaskRunning ? (
-            <div className="task-controls-dock">
-              <div className="task-status-pill">
-                <span className={`step-dot active${executorState === 'paused' ? ' paused' : ''}`} />
-                <span>{executorState === 'paused' ? 'Task paused' : (statusLabel() || 'Agent executing…')}</span>
-              </div>
-              {executorState === 'paused' ? (
+          {/* ── Bottom Dock Bar (Voice & Task Execution Controls with DaisyUI Tooltips) ── */}
+          <div className="voice-bar">
+            {isTaskRunning ? (
+              <div className="task-controls-dock">
+                <div className="task-status-pill">
+                  <span className={`step-dot active${executorState === 'paused' ? ' paused' : ''}`} />
+                  <span>{executorState === 'paused' ? 'Task paused' : (statusLabel() || 'Agent executing…')}</span>
+                </div>
+                {executorState === 'paused' ? (
+                  <button
+                    className="task-action-btn resume"
+                    onClick={() => handleResume(activeTaskId)}
+                    title="Resume task execution"
+                  >
+                    <Play size={14} /> Resume
+                  </button>
+                ) : (
+                  <button
+                    className="task-action-btn pause"
+                    onClick={() => handlePause(activeTaskId)}
+                    title="Pause task execution"
+                  >
+                    <Pause size={14} /> Pause
+                  </button>
+                )}
                 <button
-                  className="task-action-btn resume"
-                  onClick={() => handleResume(activeTaskId)}
-                  title="Resume task execution"
+                  className="task-action-btn cancel"
+                  onClick={() => handleCancel(activeTaskId)}
+                  title="Stop / Cancel task"
                 >
-                  <Play size={14} /> Resume
-                </button>
-              ) : (
-                <button
-                  className="task-action-btn pause"
-                  onClick={() => handlePause(activeTaskId)}
-                  title="Pause task execution"
-                >
-                  <Pause size={14} /> Pause
-                </button>
-              )}
-              <button
-                className="task-action-btn cancel"
-                onClick={() => handleCancel(activeTaskId)}
-                title="Stop / Cancel task"
-              >
-                <Square size={13} /> Stop
-              </button>
-            </div>
-          ) : !backendConnected ? (
-            <div className="flex flex-col items-center">
-              <div
-                className="tooltip tooltip-top"
-                data-tip="Python Brain is offline — start backend to activate voice"
-              >
-                <button
-                  className="mic-btn opacity-40 cursor-not-allowed bg-slate-200 shadow-none hover:shadow-none"
-                  disabled
-                  aria-label="Backend offline"
-                >
-                  <MicOff size={24} className="text-slate-400" />
+                  <Square size={13} /> Stop
                 </button>
               </div>
-            </div>
-          ) : recording ? (
-            <div className="flex items-center gap-2">
-              <div
-                className="tooltip tooltip-top tooltip-error"
-                data-tip="Microphone is ON (listening) — click to mute"
-              >
-                <button
-                  className="voice-btn cancel"
-                  onClick={cancelRecording}
-                  aria-label="Mute microphone"
+            ) : !backendConnected ? (
+              <div className="flex flex-col items-center">
+                <div
+                  className="tooltip tooltip-top"
+                  data-tip="Python Brain is offline — start backend to activate voice"
                 >
-                  <X size={18} />
-                </button>
+                  <button
+                    className="mic-btn opacity-40 cursor-not-allowed bg-slate-200 shadow-none hover:shadow-none"
+                    disabled
+                    aria-label="Backend offline"
+                  >
+                    <MicOff size={24} className="text-slate-400" />
+                  </button>
+                </div>
               </div>
-              <div className="recording-pill">
-                <span className="rec-dot" aria-hidden="true" />
-                <span className="text-xs font-semibold text-slate-700">
-                  {voiceStatus || 'Listening for voice…'}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center">
-              <div
-                className="tooltip tooltip-top tooltip-primary"
-                data-tip="Microphone is OFF — click to activate voice detection"
-              >
-                <button
-                  className="mic-btn"
-                  onClick={startRecording}
-                  aria-label="Start voice listening"
+            ) : recording ? (
+              <div className="flex items-center gap-2">
+                <div
+                  className="tooltip tooltip-top tooltip-error"
+                  data-tip="Microphone is ON (listening) — click to mute"
                 >
-                  <Mic size={28} />
-                </button>
+                  <button
+                    className="voice-btn cancel"
+                    onClick={cancelRecording}
+                    aria-label="Mute microphone"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="recording-pill">
+                  <span className="rec-dot" aria-hidden="true" />
+                  <span className="text-xs font-semibold text-slate-700">
+                    {voiceStatus || 'Listening for voice…'}
+                  </span>
+                </div>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="flex flex-col items-center">
+                <div
+                  className="tooltip tooltip-top tooltip-primary"
+                  data-tip="Microphone is OFF — click to activate voice detection"
+                >
+                  <button
+                    className="mic-btn"
+                    onClick={startRecording}
+                    aria-label="Start voice listening"
+                  >
+                    <Mic size={28} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Today's Todo List & Tasks Modal */}
@@ -1291,6 +1389,7 @@ export default function App() {
         counts={todoCounts}
         onToggleTask={handleToggleTodo}
         onAddTask={handleAddTodo}
+        onClearAll={handleClearTodos}
         onRefresh={fetchTodayTodos}
       />
     </>
@@ -1343,7 +1442,7 @@ function AgentMessage({
   onSelectHitlOption?: (hitlId: string, taskId: string, option: string) => void;
 }) {
   const isThinking = msg.status === 'thinking';
-  const isError    = msg.status === 'error';
+  const isError = msg.status === 'error';
   const isWaitingInput = !!msg.hitl && !msg.hitl.selectedAnswer;
   const [customInput, setCustomInput] = useState('');
 
@@ -1406,17 +1505,15 @@ function AgentMessage({
                       key={optIdx}
                       onClick={() => !isAnswered && onSelectHitlOption?.(msg.hitl!.id, msg.hitl!.taskId, opt)}
                       disabled={isAnswered}
-                      className={`btn btn-sm justify-start text-left normal-case transition-all duration-150 h-auto py-2.5 px-3 rounded-xl border ${
-                        isSelected
+                      className={`btn btn-sm justify-start text-left normal-case transition-all duration-150 h-auto py-2.5 px-3 rounded-xl border ${isSelected
                           ? 'bg-slate-900 hover:bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-primary ring-offset-1 scale-[1.01]'
                           : isAnswered
-                          ? 'bg-slate-100 border-slate-300 text-black cursor-not-allowed opacity-90'
-                          : 'bg-white hover:bg-slate-50 border-slate-300 hover:border-slate-500 text-black shadow-xs hover:scale-[1.01] active:scale-[0.99]'
-                      }`}
+                            ? 'bg-slate-100 border-slate-300 text-black cursor-not-allowed opacity-90'
+                            : 'bg-white hover:bg-slate-50 border-slate-300 hover:border-slate-500 text-black shadow-xs hover:scale-[1.01] active:scale-[0.99]'
+                        }`}
                     >
-                      <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[11px] font-extrabold mr-2 shrink-0 ${
-                        isSelected ? 'bg-white text-slate-900' : 'bg-slate-200 text-black'
-                      }`}>
+                      <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[11px] font-extrabold mr-2 shrink-0 ${isSelected ? 'bg-white text-slate-900' : 'bg-slate-200 text-black'
+                        }`}>
                         {letter}
                       </span>
                       <span

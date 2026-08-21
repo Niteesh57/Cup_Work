@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { CheckCircle2, Circle, Clock, Plus, X, ListTodo } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Plus, X, ListTodo, Trash2 } from 'lucide-react';
 
 export interface TodoTask {
   id: string;
   title: string;
   description?: string;
   status: 'pending' | 'completed' | 'in_progress' | 'cancelled';
-  priority?: 'high' | 'medium' | 'low';
+  priority?: 'high' | 'medium' | 'low' | string;
   due_date?: number;
   tags?: string[];
   created_at?: string | number;
@@ -26,26 +26,41 @@ interface TodoListModalProps {
   counts: TodoCounts;
   onToggleTask: (taskId: string, currentStatus: string) => Promise<void>;
   onAddTask?: (title: string, priority: string) => Promise<void>;
+  onClearAll?: () => Promise<void>;
   onRefresh?: () => Promise<void>;
 }
 
 export function TodoListModal({
   isOpen,
   onClose,
-  tasks,
+  tasks = [],
   counts,
   onToggleTask,
   onAddTask,
+  onClearAll,
   onRefresh,
 }: TodoListModalProps) {
   const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
   const [newTitle, setNewTitle] = useState('');
   const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium');
   const [isAdding, setIsAdding] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  const effectiveCounts = useMemo(() => {
+    const list = Array.isArray(tasks) ? tasks : [];
+    const pending = list.filter((t) => t.status !== 'completed').length;
+    const done = list.filter((t) => t.status === 'completed').length;
+    return {
+      total: list.length,
+      pending,
+      done,
+    };
+  }, [tasks]);
+
   const filteredTasks = useMemo(() => {
-    return tasks.filter((t) => {
+    const list = Array.isArray(tasks) ? tasks : [];
+    return list.filter((t) => {
       if (filter === 'active') return t.status !== 'completed';
       if (filter === 'done') return t.status === 'completed';
       return true;
@@ -77,7 +92,17 @@ export function TodoListModal({
     }
   };
 
-  const percentDone = counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
+  const handleClearAll = async () => {
+    if (!onClearAll || isClearing) return;
+    setIsClearing(true);
+    try {
+      await onClearAll();
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const percentDone = effectiveCounts.total > 0 ? Math.round((effectiveCounts.done / effectiveCounts.total) * 100) : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
@@ -105,6 +130,17 @@ export function TodoListModal({
           </div>
 
           <div className="flex items-center gap-1.5">
+            {onClearAll && effectiveCounts.total > 0 && (
+              <button
+                onClick={handleClearAll}
+                disabled={isClearing}
+                className="btn btn-ghost btn-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 gap-1 rounded-lg text-[10px] font-semibold mr-1"
+                title="Delete all tasks for today"
+              >
+                <Trash2 size={12} />
+                <span>Clear All</span>
+              </button>
+            )}
             {onRefresh && (
               <button
                 onClick={() => onRefresh()}
@@ -130,10 +166,10 @@ export function TodoListModal({
           <div className="flex items-center justify-between text-xs font-semibold">
             <div className="flex items-center gap-2">
               <span className="badge badge-sm bg-zinc-900 text-white border-0 font-mono">
-                {counts.pending} left
+                {effectiveCounts.pending} left
               </span>
               <span className="badge badge-sm bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
-                {counts.done} done
+                {effectiveCounts.done} done
               </span>
             </div>
             <span className="text-[11px] font-bold text-zinc-500">
@@ -158,7 +194,7 @@ export function TodoListModal({
                   filter === 'all' ? 'bg-white text-zinc-900 shadow-2xs font-bold' : 'text-zinc-500 hover:text-zinc-800'
                 }`}
               >
-                All ({counts.total})
+                All ({effectiveCounts.total})
               </button>
               <button
                 onClick={() => setFilter('active')}
@@ -166,7 +202,7 @@ export function TodoListModal({
                   filter === 'active' ? 'bg-white text-zinc-900 shadow-2xs font-bold' : 'text-zinc-500 hover:text-zinc-800'
                 }`}
               >
-                Active ({counts.pending})
+                Active ({effectiveCounts.pending})
               </button>
               <button
                 onClick={() => setFilter('done')}
@@ -174,7 +210,7 @@ export function TodoListModal({
                   filter === 'done' ? 'bg-white text-zinc-900 shadow-2xs font-bold' : 'text-zinc-500 hover:text-zinc-800'
                 }`}
               >
-                Done ({counts.done})
+                Done ({effectiveCounts.done})
               </button>
             </div>
 

@@ -501,6 +501,22 @@ async def toggle_todo_status(data: Dict[str, Any] = Body(...)):
     return {"success": True, "task": updated, "counts": counts}
 
 
+@app.post("/api/todos/clear-today")
+async def clear_today_todos_endpoint(data: Dict[str, Any] = Body(default={})):
+    """Wipes all todo tasks for the current user."""
+    user_id = str(data.get("userId") or "usr_local")
+    device_id = data.get("deviceId")
+    memory_manager.clear_all_todos(user_id=user_id)
+    empty_counts = {"total": 0, "pending": 0, "done": 0}
+    await event_bus.publish(EventType.TODO_UPDATED, {
+        "userId": user_id,
+        "deviceId": device_id,
+        "counts": empty_counts,
+        "tasks": [],
+    })
+    return {"success": True, "message": "All todos cleared.", "counts": empty_counts, "tasks": []}
+
+
 @app.get("/api/todos")
 async def list_todos(userId: str = "default", status: Optional[str] = None, priority: Optional[str] = None, deviceId: Optional[str] = None):
     todos = memory_manager.get_all_todos(user_id=userId, status=status, priority=priority, device_id=deviceId)

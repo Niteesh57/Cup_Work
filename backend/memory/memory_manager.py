@@ -314,6 +314,9 @@ class MemoryManager:
     def delete_todo(self, task_id: str, user_id: str) -> bool:
         return self.store.delete_todo_task(task_id=task_id, user_id=user_id)
 
+    def clear_all_todos(self, user_id: str) -> bool:
+        return self.store.clear_all_todo_tasks(user_id=user_id)
+
     # ── Long-Term Memory (Activity Timeline) ──────────────────────────────────
     def log_activity(
         self,

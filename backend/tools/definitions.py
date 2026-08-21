@@ -201,19 +201,6 @@ DESKTOP_FUNCTION_DECLARATIONS = [
         )
     ),
     types.FunctionDeclaration(
-        name="scroll",
-        description="Scrolls the mouse wheel. Negative delta scrolls down, positive scrolls up.",
-        parameters=types.Schema(
-            type=types.Type.OBJECT,
-            properties={
-                "delta": types.Schema(type=types.Type.INTEGER, description="Scroll amount. Negative = down, positive = up."),
-                "x": types.Schema(type=types.Type.INTEGER, description="Optional target X coordinate"),
-                "y": types.Schema(type=types.Type.INTEGER, description="Optional target Y coordinate")
-            },
-            required=["delta"]
-        )
-    ),
-    types.FunctionDeclaration(
         name="highlight_box",
         description="Draw a colored step-guide box on screen to visually guide the user without auto-clicking.",
         parameters=types.Schema(

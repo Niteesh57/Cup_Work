@@ -29,15 +29,38 @@ def _tool_ids(tool_context: Optional[ToolContext]) -> tuple[str, str]:
 async def take_screenshot_tool(
     tool_context: ToolContext = None,
 ) -> dict[str, Any]:
-    """Captures a live desktop screenshot. Call this ONLY when the user's query or command explicitly requires seeing or inspecting the current desktop screen, open windows, UI elements, buttons, or on-screen errors."""
+    """Captures a live desktop screenshot and inspects the visible text, windows, and UI elements on screen. Call this ONLY when the user's query or command explicitly requires seeing or inspecting the current desktop screen, open windows, UI elements, buttons, or on-screen errors."""
     task_id, _ = _tool_ids(tool_context)
     shot = await electron_bridge.execute_tool("take_screenshot", {}, task_id=task_id)
     if isinstance(shot, dict) and shot.get("base64"):
+        img_b64 = shot.get("base64")
         if tool_context is not None and hasattr(tool_context, "state"):
-            tool_context.state["latest_screenshot_base64"] = shot.get("base64")
+            tool_context.state["latest_screenshot_base64"] = img_b64
+
+        screen_text_summary = ""
+        try:
+            from backend.core.client import get_genai_client
+            client = get_genai_client()
+            img_bytes = base64.b64decode(img_b64)
+            vision_resp = await asyncio.to_thread(
+                client.models.generate_content,
+                model=config.DEFAULT_MODEL or "gemini-3.7-flash",
+                contents=[
+                    types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                    types.Part.from_text(
+                        text="You are an expert desktop vision and OCR inspector. Transcribe all text, open windows, active editors (e.g. Notepad, Notepad++, VS Code, browser), list items, tasks, notes, error dialogs, and visible UI controls verbatim. Be precise and thorough."
+                    ),
+                ],
+            )
+            if vision_resp and vision_resp.text:
+                screen_text_summary = vision_resp.text.strip()
+        except Exception as ocr_err:
+            logger.warning(f"Screenshot vision transcription failed: {ocr_err}")
+
         return {
             "success": True,
-            "message": "Desktop screenshot captured successfully.",
+            "message": "Desktop screenshot captured and analyzed successfully.",
+            "visible_screen_content": screen_text_summary or "Screenshot captured successfully.",
         }
     return {
         "success": False,
