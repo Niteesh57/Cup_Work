@@ -22,7 +22,7 @@
 - [⚡ Quick Start (2-Minute Spin-Up)](#-quick-start-2-minute-spin-up)
 - [📖 Overview](#-overview)
 - [🚀 Key Pillars & Capabilities](#-key-pillars--capabilities)
-- [🏗️ Full System Architecture & Agentic Execution Loop](#-full-system-architecture--agentic-execution-loop)
+- [🏗️ System Architecture & Agentic Execution Loop](#️-system-architecture--agentic-execution-loop)
 - [🤖 Agent Tool Capabilities & Model Execution Matrix](#-agent-tool-capabilities--model-execution-matrix)
 - [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#-how-gemini-models-execute-desktop-workflows-deep-dive)
 - [📁 Project Structure](#-project-structure)
@@ -129,85 +129,15 @@ For end-to-end desktop task execution:
 
 ---
 
-## 🏗️ Full System Architecture & Agentic Execution Loop
+## 🏗️ System Architecture & Agentic Execution Loop
 
-Cup Work follows an autonomous, closed-loop **Taskmaster Operational Loop**:
-$$\textbf{Goal} \longrightarrow \textbf{Plan} \longrightarrow \textbf{Delegate} \longrightarrow \textbf{Safety Check (HITL)} \longrightarrow \textbf{Act} \longrightarrow \textbf{Observe} \longrightarrow \textbf{Verify} \longrightarrow \textbf{Adapt/Done}$$
+Cup Work follows a closed-loop **Taskmaster workflow**:
 
-```mermaid
-flowchart TB
-    subgraph UserInterface ["Desktop Client Runtime (Electron 34 + React 18)"]
-        UserGoal["User Spoken / Typed Goal<br><i>'Fix this build & verify tests'</i>"]
-        OverlayWin["Transparent Screen Overlay<br><i>SVG Whiteboard, Glow Boxes, Pointers</i>"]
-        UIAManager["Windows UI Automation (UIA) Bridge<br><i>Win32 Accessibility Tree & Control Handles</i>"]
-        AudioEngine["Web Audio & Voice Engine<br><i>VAD + 24kHz PCM Streaming Player</i>"]
-        ElectronIPC["Electron Main Process & IPC Bridge<br><i>JSON-RPC / Native Windows Hooks</i>"]
-    end
+**Goal → Plan → Delegate → Safety Check (HITL) → Act → Observe → Verify → Adapt / Done**
 
-    subgraph BackendBrain ["Cup Work Python Brain (FastAPI + Google ADK)"]
-        WSServer["WebSocket Relay & REST Endpoints<br><i>Port 8765 - /ws, /api/agent</i>"]
-        EventStream["Internal Event Bus & State Machine<br><i>Real-time Agent Commentary & Logs</i>"]
-        MemoryGraph["Temporal Memory & SQLite Store<br><i>Active Preferences, Todos, Device Identities</i>"]
-        
-        subgraph ADKHierarchy ["Google ADK Multi-Agent Hierarchy"]
-            RootAgent["<b>Root Orchestrator Agent</b><br><i>gemini-3.7-flash</i><br>Decomposes Goals, Context Injection, Router"]
-            
-            subgraph SpecialistAgents ["Domain-Isolated Specialist Agents"]
-                Planner["<b>Strange Planner</b><br><i>Task Decomposition & Visual Coordinate Grounding</i>"]
-                Whiteboard["<b>On-Screen Whiteboard Agent</b><br><i>Dynamic SVG Lecture Engine & Auto-Cam</i>"]
-                Companion["<b>General / Companion Agent</b><br><i>Conversational Persona & Grounded Search</i>"]
-                Research["<b>Research Agent</b><br><i>Deep Web & API Documentation Synthesis</i>"]
-                Clarify["<b>Clarification Agent</b><br><i>Interactive Disambiguation & Q&A</i>"]
-                Scratchpad["<b>Scratchpad Agent</b><br><i>Command Proposals & Code Snippet Cards</i>"]
-            end
-
-            subgraph ActionVerificationMesh ["Closed-Loop Action & Verification Engine"]
-                Executor["<b>Main Desktop Executor</b><br><i>gemini-3.7-flash</i><br>Keyboard, Mouse, Window Automation"]
-                HITLGate{"<b>HITL Safety Gate</b><br><i>Risk Assessment</i><br>High-Risk Action?"}
-                ApprovalCard["Interactive Approval Card<br><i>Spoken / Click Confirmation</i>"]
-                GoalVerifier["<b>Goal Verifier</b><br><i>gemini-3.7-flash-vision</i><br>Post-Action Screen Inspection"]
-            end
-        end
-    end
-
-    subgraph GeminiModels ["Google Cloud & Gemini Model Ensemble"]
-        G_Flash["Gemini 3.7 Flash<br><i>Reasoning, Planning & Tool Calling</i>"]
-        G_Vision["Gemini 3.7 Flash Vision<br><i>Screen Understanding & Grid OCR</i>"]
-        G_TTS["Gemini Flash TTS Preview<br><i>Voice Synthesis with Emotion Tags</i>"]
-        G_Live["Gemini 2.5 Flash Live<br><i>Real-Time Audio Dialog & Barge-In</i>"]
-    end
-
-    UserGoal --> AudioEngine
-    UserGoal --> ElectronIPC
-    AudioEngine --> WSServer
-    ElectronIPC <-->|WebSocket Port 8765| WSServer
-    
-    WSServer --> RootAgent
-    RootAgent <--> MemoryGraph
-    RootAgent --> EventStream
-    
-    RootAgent -->|ADK transfer_to_agent| SpecialistAgents
-    RootAgent -->|ADK transfer_to_agent| Executor
-    
-    SpecialistAgents <--> G_Flash
-    Whiteboard -->|SVG Canvas Directives| OverlayWin
-    Planner -->|Bounding Boxes & Arrows| OverlayWin
-    
-    Executor --> HITLGate
-    HITLGate -->|Yes: Destructive or Shell| ApprovalCard
-    ApprovalCard -->|User Approves| UIAManager
-    HITLGate -->|No: Safe or Read-only| UIAManager
-    
-    UIAManager -->|Execute Win32 / UIA / Keys| ElectronIPC
-    ElectronIPC -->|Post-Action Screenshot| GoalVerifier
-    GoalVerifier <--> G_Vision
-    
-    GoalVerifier -->|Visual State Changed| Executor
-    GoalVerifier -->|Zero State Change / Error| Planner
-    
-    EventStream -->|TTS Stream Chunks| AudioEngine
-    AudioEngine <--> G_TTS
-```
+<div align="center">
+  <img src="public/Architecture.svg" alt="Cup Work System Architecture" width="100%" />
+</div>
 
 ---
 
