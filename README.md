@@ -22,7 +22,7 @@
 - [⚡ Quick Start (2-Minute Spin-Up)](#-quick-start-2-minute-spin-up)
 - [📖 Overview](#-overview)
 - [🚀 Key Pillars & Capabilities](#-key-pillars--capabilities)
-- [🏗️ System Architecture & Agentic Execution Loop](#️-system-architecture--agentic-execution-loop)
+- [🏗️ Full System Architecture & Agentic Execution Loop](#-full-system-architecture--agentic-execution-loop)
 - [🤖 Agent Tool Capabilities & Model Execution Matrix](#-agent-tool-capabilities--model-execution-matrix)
 - [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#-how-gemini-models-execute-desktop-workflows-deep-dive)
 - [📁 Project Structure](#-project-structure)
@@ -133,12 +133,104 @@ For end-to-end desktop task execution:
 
 Cup Work follows a closed-loop **Taskmaster workflow**:
 
-**Goal → Plan → Delegate → Safety Check (HITL) → Act → Observe → Verify → Adapt / Done**
+**Goal → Plan → Delegate → Safety Check → Act → Observe → Verify → Adapt / Done**
 
-<div align="center">
-  <img src="public/Architecture.svg" alt="Cup Work System Architecture" width="100%" />
-</div>
+```mermaid
+flowchart TB
 
+    subgraph Desktop["Desktop Client - Electron + React"]
+
+        User["User<br/>Voice or Typed Goal"]
+
+        Voice["Voice Engine<br/>VAD + Streaming Audio"]
+
+        Overlay["Transparent Overlay<br/>Highlights - Pointers - SVG Whiteboard"]
+
+        UIA["Windows UI Automation<br/>Accessibility Tree + UI Controls"]
+
+        Bridge["Desktop Control Bridge<br/>Keyboard - Mouse - Windows"]
+    end
+
+
+    subgraph Cloud["Google Cloud - Cup Work Backend"]
+
+        API["FastAPI + WebSocket<br/>Session and Event Relay"]
+
+        Memory["SQLite<br/>Preferences + Active Task State"]
+
+        subgraph ADK["Google ADK Multi-Agent System"]
+
+            Root["Root Agent<br/>Goal - Plan - Delegate"]
+
+            Planner["Planner Agent<br/>Breaks Goal Into Steps"]
+
+            Vision["Vision Agent<br/>Understands Desktop State"]
+
+            Executor["Executor Agent<br/>Performs Desktop Actions"]
+
+            HITL["HITL Safety Gate<br/>Approval for Risky Actions"]
+
+            Verifier["Goal Verifier<br/>Checks Whether Goal Was Reached"]
+
+            Specialists["Specialist Agents<br/>Research - Whiteboard - Clarification - Conversation"]
+        end
+    end
+
+
+    subgraph Gemini["Gemini"]
+
+        Reasoning["Gemini Flash<br/>Reasoning - Planning - Tool Calls"]
+
+        VisionModel["Gemini Vision<br/>Screen Understanding"]
+
+        TTS["Gemini TTS<br/>Voice Response"]
+    end
+
+
+    User --> Voice
+    User --> API
+
+    Voice <--> API
+
+    API --> Root
+    Root <--> Memory
+
+    Root --> Planner
+    Root --> Specialists
+
+    Planner --> Reasoning
+    Specialists --> Reasoning
+
+    Vision --> UIA
+    UIA --> Vision
+
+    Vision <--> VisionModel
+
+    Planner --> Executor
+    Executor --> HITL
+
+    HITL -->|Safe Action| Bridge
+    HITL -->|Risky Action| Approval["User Approval<br/>Approve or Reject"]
+
+    Approval -->|Approved| Bridge
+    Approval -->|Rejected| Root
+
+    Bridge --> UIA
+    Bridge --> Overlay
+
+    Bridge -->|New Desktop State| Verifier
+
+    Verifier <--> VisionModel
+
+    Verifier -->|Goal Achieved| Done["TASK COMPLETE"]
+
+    Verifier -->|Goal Not Achieved| Planner
+
+    Root --> TTS
+    TTS --> Voice
+
+    Specialists --> Overlay
+    ```
 ---
 
 ## 🤖 Agent Tool Capabilities & Model Execution Matrix
