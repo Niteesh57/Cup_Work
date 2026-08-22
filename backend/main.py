@@ -10,18 +10,22 @@ import uvicorn
 from backend.config import config
 
 def start():
+    port = int(os.getenv("PORT", config.PORT))
+    host = os.getenv("HOST", config.HOST)
+    reload_enabled = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
+
     print(f"=====================================================")
     print(f"  Cup Work Python Brain Server v2.0")
-    print(f"  Host: {config.HOST}:{config.PORT}")
+    print(f"  Host: {host}:{port}")
     print(f"  Vertex AI Mode: {config.USE_VERTEXAI}")
     print(f"  Default Model: {config.DEFAULT_MODEL}")
     print(f"=====================================================")
 
     uvicorn.run(
         "backend.server:app",
-        host=config.HOST,
-        port=config.PORT,
-        reload=True,
+        host=host,
+        port=port,
+        reload=reload_enabled,
         log_level=config.LOG_LEVEL.lower(),
     )
 

@@ -1,0 +1,55 @@
+# Git & Metadata
+.git
+.gitignore
+.github
+
+# Secrets & Environment variables
+.env
+.env.*
+*.pem
+*.key
+
+# Python caches and virtualenvs
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache
+.coverage
+htmlcov
+.venv
+venv
+env
+
+# Local Databases and runtime storage
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+*.db
+backend/data/*.sqlite
+backend/data/*.sqlite-journal
+
+# Frontend & Electron (Excluded from backend image)
+node_modules
+dist
+dist-electron
+build
+release
+src
+public
+*.ts
+tsconfig*.json
+vite.config.ts
+postcss.config.js
+tailwind.config.js
+index.html
+package.json
+package-lock.json
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+.agent-state
+.commandcode

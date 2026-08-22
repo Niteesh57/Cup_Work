@@ -24,8 +24,8 @@ class Config:
     DATA_DIR: Path = backend_dir / "data"
 
     # Server settings
-    HOST: str = os.getenv("PYTHON_BACKEND_HOST", "127.0.0.1")
-    PORT: int = int(os.getenv("PYTHON_BACKEND_PORT", "8765"))
+    HOST: str = os.getenv("HOST", os.getenv("PYTHON_BACKEND_HOST", "0.0.0.0" if os.getenv("PORT") else "127.0.0.1"))
+    PORT: int = int(os.getenv("PORT", os.getenv("PYTHON_BACKEND_PORT", "8765")))
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
 
     # GenAI / Vertex AI configuration

@@ -23,7 +23,6 @@ interface TodoListModalProps {
   isOpen: boolean;
   onClose: () => void;
   tasks: TodoTask[];
-  counts: TodoCounts;
   onToggleTask: (taskId: string, currentStatus: string) => Promise<void>;
   onAddTask?: (title: string, priority: string) => Promise<void>;
   onClearAll?: () => Promise<void>;
@@ -34,7 +33,6 @@ export function TodoListModal({
   isOpen,
   onClose,
   tasks = [],
-  counts,
   onToggleTask,
   onAddTask,
   onClearAll,

@@ -17,3 +17,4 @@
 - For architecture/design requests ("prepare an architecture first"), switches into plan mode and writes the architecture/plan to a file before touching code. Confidence: 0.8
 - When asked to strip/simplify UI features, deletes the dead component files and their CSS entirely rather than leaving them orphaned, then greps to confirm no remaining references. Confidence: 0.8
 - After a UI rewrite, proactively hunts for leftover stale state flows (e.g., recording state stuck after a HITL voice answer auto-resolves) and fixes them, beyond just getting the build green. Confidence: 0.7
+- When asked to "check code" (review uncommitted work), reports findings as "found and fixed" vs. "flagged — needs your call": fixes clearly-safe issues (e.g., unused props causing TS6133) directly, but asks the user before wiring up or altering feature behavior that wasn't explicitly requested (e.g., making a cosmetic backend-URL setting actually reroute traffic). Confidence: 0.7

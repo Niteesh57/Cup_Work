@@ -1386,7 +1386,6 @@ export default function App() {
         isOpen={showTodoModal}
         onClose={() => setShowTodoModal(false)}
         tasks={todoTasks}
-        counts={todoCounts}
         onToggleTask={handleToggleTodo}
         onAddTask={handleAddTodo}
         onClearAll={handleClearTodos}
