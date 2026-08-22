@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body
 from backend.config import config
 from backend.bridge.electron_bridge import electron_bridge
 
-logger = logging.getLogger("hey_jave.api.system")
+logger = logging.getLogger("cup_work.api.system")
 
 router = APIRouter(tags=["System & Config"])
 

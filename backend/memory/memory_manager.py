@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from backend.storage.sqlite_store import sqlite_store, SqliteStore
 
-logger = logging.getLogger("hey_jave.memory")
+logger = logging.getLogger("cup_work.memory")
 
 class MemoryManager:
     """

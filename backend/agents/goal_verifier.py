@@ -10,7 +10,7 @@ from google.genai import types
 from backend.config import config
 from backend.core.client import get_genai_client
 
-logger = logging.getLogger("hey_jave.goal_verifier")
+logger = logging.getLogger("cup_work.goal_verifier")
 
 
 @dataclass

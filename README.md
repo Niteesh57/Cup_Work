@@ -1,6 +1,7 @@
 <div align="center">
 
 # ☕ Cup Work (Hey Jave)
+
 ### *Your Autonomous Multimodal Desktop Companion & On-Screen AI Agent*
 
 [![Gemini 3.7 Flash](https://img.shields.io/badge/Gemini-3.7%20Flash%20%26%20Vision-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
@@ -19,6 +20,7 @@
 </div>
 
 ## 🌟 Table of Contents
+
 - [⚡ Quick Start (2-Minute Spin-Up)](#quick-start)
 - [📖 Overview](#overview)
 - [🚀 Key Pillars & Capabilities](#key-pillars)
@@ -55,7 +57,8 @@ cp backend/.env.example backend/.env
 # Edit backend/.env and set: GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-### In Terminal 1 (Python Backend Server):
+### In Terminal 1 (Python Backend Server)
+
 ```bash
 cd backend
 python -m venv .venv
@@ -68,9 +71,11 @@ python -m venv .venv
 pip install -r requirements.txt
 python main.py
 ```
+
 > Server will start at `http://127.0.0.1:8765` with `[OK] Cup Work Python Brain Server`.
 
-### In Terminal 2 (Electron Desktop Client):
+### In Terminal 2 (Electron Desktop Client)
+
 ```bash
 # From the project root:
 npm install
@@ -85,6 +90,7 @@ npm start
 ## <a id="overview"></a>📖 Overview
 
 Most desktop AI assistants are confined to a static sidebar chat box. **Cup Work** breaks free from the chat window:
+
 - It **draws animated architectural diagrams** directly over your desktop screen with an auto-gliding camera.
 - It **sees your screen** and highlights UI buttons, menus, and chessboard squares with real-time bounding boxes and pointer arrows.
 - It **autonomously automates Windows apps** (MS Word, Excel, Chrome, File Explorer) through an `OBSERVE → ACT → MID-FLIGHT VERIFY → REDO` loop.
@@ -96,33 +102,42 @@ Most desktop AI assistants are confined to a static sidebar chat box. **Cup Work
 ## <a id="key-pillars"></a>🚀 Key Pillars & Capabilities
 
 ### 1. On-Screen Infinite Whiteboard Agent (`on_screen_agent`)
+
 When you ask conceptual or architectural questions (*"How does OAuth2 work?"*, *"Explain Kafka internal architecture"*, *"Teach me Kubernetes"*):
+
 - **Precompiled Progressive Lectures**: Precompiles multi-step SVG sketch nodes (boxes, database cylinders, cloud services, and curved animated arrows).
 - **Auto-Gliding Infinite Canvas**: Automatically pans and centers the virtual camera onto active nodes as each step unfolds.
 - **Synchronized Voice Narration**: Speaks detailed explanations for every step using expressive Gemini TTS.
 - **Mid-Flight Doubts & In-Flight Clarifications**: Ask a question mid-lecture (*"Wait, what if the consumer fails?"*) and the agent anchors a dynamic callout card to the active node without wiping the canvas.
 
 ### 2. Hierarchical ADK Multi-Agent Mesh
+
 Built natively on the **Google Agent Development Kit (ADK)**:
+
 - **`root_agent`**: Evaluates intent and dynamically transfers control to specialized agents.
 - **Context Injection**: Every agent invocation receives aggregated prompt context containing active user preferences, active todo tasks, and short-term dialogue history.
 
 ### 3. Closed-Loop Desktop UI Automation (`main_executor`)
+
 For end-to-end desktop task execution:
+
 - **Windows UI Automation (UIA) Tree**: Inspects controls, ribbon tabs, buttons, and text fields via native Windows accessibility APIs.
 - **Direct Mouse & Keyboard**: High-precision mouse clicks, smooth drags, scroll deltas, and hotkey combinations (`Ctrl+N`, `Ctrl+A`, `Ctrl+Alt+1`).
 - **Mid-Flight Goal Verification (`goal_verifier`)**: Uses Gemini 3.7 Vision to capture a post-action screenshot and verify whether the sub-goal was visually achieved before proceeding or self-correcting.
 
 ### 4. Expressive Gemini TTS with Inline Emotion Tags
+
 - Over 30 voice personalities (e.g., *Kore*, *Puck*, *Fenrir*, *Aoede*, *Sulafat*).
 - Directly embeds natural emotion tags: `[excitedly]`, `[cheerfully]`, `[curious]`, `[thoughtful]`, `[serious]`, `[whispers]`, `[laughs]`.
 - Low-latency real-time PCM/WAV audio streaming over WebSockets.
 
 ### 5. Visual Guidance & Strange Planner (`strange_planner`)
+
 - Pinpoints options and buttons across web consoles and desktop software with normalized `[ymin, xmin, ymax, xmax]` bounding boxes and arrows.
 - Analyzes strategy games (e.g. Chess) with precise 8x8 square grid calculations, drawing move arrows from origin to target square.
 
 ### 6. Long-Term Temporal Preference Memory
+
 - **Temporal States**: Tracks preferences with `present` vs. `expired` states (e.g. *"user switched from React to Vue"*).
 - **Multi-Device Sync**: Auto-provisions hardware IDs (`desktop-main`, `laptop-work`) and links them to user identities.
 - **Integrated Todo Task Management**: Creates, updates, and tracks actionable tasks directly through voice or chat.
@@ -271,6 +286,7 @@ Cup Work bridges high-level AI reasoning with low-level Windows OS control throu
 ```
 
 ### Phase 1: Dynamic Intent Routing & Context Injection
+
 1. User provides a goal via voice (Web Speech API / Gemini Live) or text.
 2. The `root_agent` receives the prompt along with an **injected context block** containing:
    - **Active Preferences:** Filtered from SQLite (e.g., `package_manager: pnpm`, `editor: VS Code`).
@@ -279,20 +295,25 @@ Cup Work bridges high-level AI reasoning with low-level Windows OS control throu
 3. `root_agent` calls Google ADK's `transfer_to_agent("main_executor")` or the relevant specialist.
 
 ### Phase 2: Dual-Tier Perception Engine (Speed + Robustness)
+
 When an agent needs to locate an on-screen button or inspect terminal text:
-* **Tier 1 (Sub-15ms UIA Query):** The agent calls `uia_get_interactive_elements_tool()` or `uia_search_elements_tool()`. The Python backend sends a WebSocket request to Electron's native Windows UI Automation bridge, returning bounding rectangles, control types (`Button`, `Edit`, `MenuItem`), and accessibility IDs.
-* **Tier 2 (Gemini Vision Grounding Fallback):** If an application is rendered on a custom HTML5 canvas, OpenGL viewport, or game engine, UIA returns empty nodes. The system automatically captures a PNG screenshot, encodes it to base64, and prompts **Gemini 3.7 Flash Vision** with a normalized coordinate system ($0\text{--}1000$). Gemini returns exact spatial bounding boxes mapped back to physical display pixels.
+- **Tier 1 (Sub-15ms UIA Query):** The agent calls `uia_get_interactive_elements_tool()` or `uia_search_elements_tool()`. The Python backend sends a WebSocket request to Electron's native Windows UI Automation bridge, returning bounding rectangles, control types (`Button`, `Edit`, `MenuItem`), and accessibility IDs.
+- **Tier 2 (Gemini Vision Grounding Fallback):** If an application is rendered on a custom HTML5 canvas, OpenGL viewport, or game engine, UIA returns empty nodes. The system automatically captures a PNG screenshot, encodes it to base64, and prompts **Gemini 3.7 Flash Vision** with a normalized coordinate system ($0\text{--}1000$). Gemini returns exact spatial bounding boxes mapped back to physical display pixels.
 
 ### Phase 3: Zero-Trust Human-In-The-Loop (HITL) Safety Gate
+
 Before any command reaches the operating system:
+
 1. `main_executor` passes the proposed action through `hitl_manager`.
 2. Actions categorized as **read-only / safe** (e.g., `focus_window`, `take_screenshot`, `scroll`, `uia_get_text`) execute immediately without user interruption.
 3. Actions categorized as **high-risk or mutating** (e.g., running shell commands, terminating processes, modifying system files, clicking checkout buttons) trigger `ask_human_tool`.
 4. An interactive glassmorphism card appears on screen with options. The agent halts execution until the user gives explicit voice or click approval.
 
 ### Phase 4: Multi-Action Chained Execution over WebSocket JSON-RPC
+
 To eliminate sluggish single-keypress turn delays:
-* The model can chain complementary tool invocations in a single response turn:
+- The model can chain complementary tool invocations in a single response turn:
+
   ```json
   [
     {"name": "focus_window", "args": {"windowTitle": "PowerShell", "maximize": true}},
@@ -300,26 +321,30 @@ To eliminate sluggish single-keypress turn delays:
     {"name": "press_hotkey", "args": {"hotkey": "Return"}}
   ]
   ```
+
 * The Python backend dispatches these tools over WebSocket (`ws://127.0.0.1:8765/ws`) to Electron, which executes them sequentially via native Windows `SendInput` APIs and Win32 window handles.
 
 ### Phase 5: Mid-Flight Goal Verification & Self-Correction
+
 After executing the action chain:
+
 1. Electron captures an instant post-action screenshot.
 2. `goal_verifier` calls **Gemini 3.7 Flash Vision** to compare the screen state against the expected sub-goal.
 3. **If Verified:** The executor marks the step complete and proceeds to the next planned phase.
 4. **If Not Verified (State unchanged or error dialog detected):** The agent does NOT enter a blind loop. It diagnoses why the action failed (e.g., window lost focus, button disabled), updates its plan, and tries an alternative path (e.g., keyboard hotkey instead of mouse click).
 
 ### Phase 6: Real-Time Multimodal Voice & Overlay Streaming
+
 Throughout execution:
-* **Audio Synthesis:** Spoken responses are generated via **Gemini Flash TTS** using inline emotion tags (`[excitedly]`, `[thoughtful]`, `[serious]`) and streamed as raw 24kHz PCM chunks directly to the Web Audio buffer.
-* **On-Screen Canvas:** Whiteboard diagrams and highlight boxes render live on the transparent click-through Electron overlay without taking focus away from the user's active work.
+- **Audio Synthesis:** Spoken responses are generated via **Gemini Flash TTS** using inline emotion tags (`[excitedly]`, `[thoughtful]`, `[serious]`) and streamed as raw 24kHz PCM chunks directly to the Web Audio buffer.
+- **On-Screen Canvas:** Whiteboard diagrams and highlight boxes render live on the transparent click-through Electron overlay without taking focus away from the user's active work.
 
 ---
 
 ## <a id="project-structure"></a>📁 Project Structure
 
 ```text
-hey_jave/
+cup_work/
 ├── backend/                        # Python FastAPI & Google ADK backend
 │   ├── adk_runner.py               # Google ADK Runner wrapper & execution lifecycle
 │   ├── config.py                   # Environment & server settings
@@ -376,7 +401,9 @@ hey_jave/
 ## <a id="spin-up-guide"></a>🛠️ Detailed Step-by-Step Spin-Up Guide
 
 ### <a id="prerequisites"></a>Prerequisites
+
 Before running Cup Work, make sure your machine has:
+
 1. **Node.js**: `v20.0.0` or newer ([Download Node.js](https://nodejs.org/))
 2. **Python**: `3.11` or `3.12` ([Download Python](https://www.python.org/downloads/))
 3. **Git**: Installed and configured on your system.
@@ -387,6 +414,7 @@ Before running Cup Work, make sure your machine has:
 ---
 
 ### <a id="step-1"></a>Step 1: Get a Gemini API Key
+
 1. Visit **[Google AI Studio](https://aistudio.google.com/apikey)**.
 2. Sign in with your Google account and click **"Create API Key"**.
 3. Copy your key (starts with `AIzaSy...`).
@@ -430,7 +458,8 @@ LOG_LEVEL=info
 
 Open **Terminal 1** and run:
 
-#### On Windows (PowerShell):
+#### On Windows (PowerShell)
+
 ```powershell
 cd backend
 python -m venv .venv
@@ -439,7 +468,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
-#### On Windows (CMD):
+#### On Windows (CMD)
+
 ```cmd
 cd backend
 python -m venv .venv
@@ -448,7 +478,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
-#### On macOS / Linux (Bash / Zsh):
+#### On macOS / Linux (Bash / Zsh)
+
 ```bash
 cd backend
 python3 -m venv .venv
@@ -457,8 +488,10 @@ pip install -r requirements.txt
 python main.py
 ```
 
-#### ✅ Verify Backend Health:
+#### ✅ Verify Backend Health
+
 You should see:
+
 ```text
 =====================================================
   Cup Work Python Brain Server v2.0
@@ -471,6 +504,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
 ```
 
 In your browser or terminal, verify health check:
+
 ```powershell
 # PowerShell
 Invoke-RestMethod http://127.0.0.1:8765/health
@@ -478,6 +512,7 @@ Invoke-RestMethod http://127.0.0.1:8765/health
 # Or cURL
 curl http://127.0.0.1:8765/health
 ```
+
 Expected output: `{"status":"ok","service":"hey-jave-brain","default_model":"gemini-3.7-flash", ...}`
 
 ---
@@ -506,6 +541,7 @@ npm start
 Once the Cup Work window opens, test these core capabilities to verify complete end-to-end functionality:
 
 ### 1. Test the On-Screen Animated Whiteboard (`on_screen_agent`)
+
 Type or speak:
 > *"Explain how Kafka internal partition architecture works with a diagram"*
 
@@ -513,24 +549,28 @@ Type or speak:
 - *Press `ESC` to close the whiteboard at any time.*
 
 ### 2. Test In-Flight Doubt Clarification
+
 While the whiteboard is active, ask:
 > *"Wait, what happens if the broker node crashes?"*
 
 - **What to expect**: Cup Work retains the active diagram and anchors a live clarification note directly next to the broker component with voice narration.
 
 ### 3. Test Places Grounding & Temporal Todo Memory (`general_agent`)
+
 Type or speak:
 > *"Find the top 3 coffee shops in Seattle and add visiting them to my todo list for today."*
 
 - **What to expect**: The agent uses Google Search grounding to return real ratings, addresses, and recommendations, auto-creates todo items in the SQLite task database, and remembers your coffee interest. Click the **ListTodo** icon in the header to view your persistent task list.
 
 ### 4. Test Desktop Screen Perception & Guidance (`strange_planner`)
+
 With any application or website open, ask:
 > *"Where is the option to search on this screen?"*
 
 - **What to expect**: Cup Work captures a screenshot and renders a high-contrast glowing highlight box and pointer arrow directly over the target element on your screen.
 
 ### 5. Test Closed-Loop Windows Desktop Automation (`main_executor`) *(Windows)*
+
 Type or speak:
 > *"Open Notepad, write a grocery list with apples, milk, and coffee, and make the window full screen."*
 
@@ -558,6 +598,7 @@ Type or speak:
 ## <a id="api-protocol"></a>📡 API & WebSocket Protocol
 
 ### REST Endpoints
+
 - `GET  /health`: Health status, active clients, and default model.
 - `POST /api/agent/chat`: Send text or base64 audio prompt to ADK multi-agent mesh.
 - `POST /api/agent/stop`: Cancel the currently executing task.
@@ -568,6 +609,7 @@ Type or speak:
 - `GET  /api/preferences`: Retrieve temporal user preferences with status (`present`/`expired`).
 
 ### WebSocket Messages (`ws://127.0.0.1:8765/ws`)
+
 - `REGISTER_DEVICE`: Electron client registers hardware ID (`dev_xxxx`) and links identity.
 - `HUMAN_RESPONSE`: User answers a Human-in-the-Loop (HITL) multiple-choice prompt.
 - `AGENT_STEP_UPDATE`: Broadcasts intermediate agent reasoning, tool execution, and state changes.
@@ -578,24 +620,31 @@ Type or speak:
 ## <a id="troubleshooting"></a>🩺 Troubleshooting & Common Gotchas
 
 ### 1. PowerShell Script Execution Policy Error
+
 If you see `File .venv\Scripts\Activate.ps1 cannot be loaded because running scripts is disabled`:
+
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
 ### 2. Backend Port 8765 Already in Use
+
 If port `8765` is occupied by another process:
+
 1. Change `PYTHON_BACKEND_PORT=8766` in `backend/.env`.
 2. Start the backend: `python main.py`.
 3. In the Electron app, open **Settings** (gear icon) and set the Backend URL to `http://127.0.0.1:8766`.
 
 ### 3. Audio / Microphone Access in Electron
+
 If speech recognition does not capture your voice:
+
 - Make sure your microphone is enabled in Windows Settings -> *Privacy & Security* -> *Microphone*.
 - You can always use text input in the chat box if microphone access is unavailable.
 
 ### 4. Windows Overlay Display
+
 The screen overlay runs as a transparent, frameless window spanning your primary display. If multi-monitor setups shift the overlay, use `ESC` to dismiss or toggle the **Whiteboard** button in the header.
 
 ---
@@ -618,5 +667,3 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 <div align="center">
   <sub>Built with ❤️ for the Google Gemini Developer Competition.</sub>
 </div>
-
-

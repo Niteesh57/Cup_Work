@@ -13,7 +13,7 @@ from google.genai import types
 from backend.config import config
 from backend.events.event_bus import EventType, event_bus
 
-logger = logging.getLogger("hey_jave.tts_streamer")
+logger = logging.getLogger("cup_work.tts_streamer")
 
 SUPPORTED_VOICES: Dict[str, str] = {
     "Kore": "Firm & Confident",

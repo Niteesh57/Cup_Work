@@ -6,7 +6,7 @@ from backend.events.event_bus import EventType, event_bus
 from backend.memory.memory_manager import memory_manager
 from backend.models import CreateTodoRequest, UpdateTodoRequest
 
-logger = logging.getLogger("hey_jave.api.todos")
+logger = logging.getLogger("cup_work.api.todos")
 
 router = APIRouter(tags=["Todo Tasks"])
 

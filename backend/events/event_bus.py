@@ -5,7 +5,7 @@ import logging
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
-logger = logging.getLogger("hey_jave.events")
+logger = logging.getLogger("cup_work.events")
 
 
 class EventType(str, Enum):

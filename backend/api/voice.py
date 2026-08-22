@@ -6,7 +6,7 @@ from backend.agents import voice_transcriber
 from backend.voice.tts_streamer import tts_streamer, SUPPORTED_VOICES
 from backend.models import TranscribeRequest
 
-logger = logging.getLogger("hey_jave.api.voice")
+logger = logging.getLogger("cup_work.api.voice")
 
 router = APIRouter(tags=["Voice & TTS"])
 

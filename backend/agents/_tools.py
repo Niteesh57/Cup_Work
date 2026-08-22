@@ -16,7 +16,7 @@ from backend.memory.memory_manager import memory_manager
 from backend.events.event_bus import EventType, event_bus
 from backend.config import config
 
-logger = logging.getLogger("hey_jave.tools")
+logger = logging.getLogger("cup_work.tools")
 
 
 def _tool_ids(tool_context: Optional[ToolContext]) -> tuple[str, str]:

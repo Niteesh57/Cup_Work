@@ -9,7 +9,7 @@ from backend.models import (
     DeviceRenameRequest,
 )
 
-logger = logging.getLogger("hey_jave.api.device")
+logger = logging.getLogger("cup_work.api.device")
 
 router = APIRouter(tags=["User & Device Identity"])
 

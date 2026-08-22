@@ -10,7 +10,7 @@ from backend.models import (
     FactRequest,
 )
 
-logger = logging.getLogger("hey_jave.api.memory")
+logger = logging.getLogger("cup_work.api.memory")
 
 router = APIRouter(tags=["Memory & Preferences"])
 

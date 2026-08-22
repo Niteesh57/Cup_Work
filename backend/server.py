@@ -12,7 +12,7 @@ from backend.events.commentary import commentary_translator
 from backend.api import api_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-logger = logging.getLogger("hey_jave.server")
+logger = logging.getLogger("cup_work.server")
 
 
 @asynccontextmanager

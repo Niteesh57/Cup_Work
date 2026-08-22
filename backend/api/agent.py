@@ -8,7 +8,7 @@ from backend.memory.memory_manager import memory_manager
 from backend.adk_runner import adk_runner
 from backend.models import ChatRequest, StopRequest
 
-logger = logging.getLogger("hey_jave.api.agent")
+logger = logging.getLogger("cup_work.api.agent")
 
 router = APIRouter(tags=["Agent Execution"])
 

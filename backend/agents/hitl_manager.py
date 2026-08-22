@@ -10,7 +10,7 @@ from backend.bridge.electron_bridge import electron_bridge
 from backend.events.event_bus import EventType, event_bus
 from backend.storage.sqlite_store import sqlite_store
 
-logger = logging.getLogger("hey_jave.hitl")
+logger = logging.getLogger("cup_work.hitl")
 
 
 class HitlManager:

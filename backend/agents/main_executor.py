@@ -23,7 +23,7 @@ from backend.events.event_bus import EventType, event_bus
 from backend.memory.memory_manager import memory_manager
 from backend.storage.sqlite_store import sqlite_store
 
-logger = logging.getLogger("hey_jave.executor")
+logger = logging.getLogger("cup_work.executor")
 
 
 class AgentState(str, Enum):

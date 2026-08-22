@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body
 
 from backend.memory.memory_manager import memory_manager
 
-logger = logging.getLogger("hey_jave.api.session")
+logger = logging.getLogger("cup_work.api.session")
 
 router = APIRouter(tags=["Daily Session Management"])
 

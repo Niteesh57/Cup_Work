@@ -13,7 +13,7 @@ from backend.agents import executor_manager, root_agent
 from backend.core.client import get_genai_client
 from backend.memory.memory_manager import memory_manager
 
-logger = logging.getLogger("hey_jave.adk")
+logger = logging.getLogger("cup_work.adk")
 
 
 class AdkRunner:

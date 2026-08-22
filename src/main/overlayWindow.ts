@@ -65,6 +65,22 @@ export function createOverlayWindow(): BrowserWindow {
   return overlayWindow;
 }
 
+let isScreenPadActive = false;
+let isWhiteboardActive = false;
+let activeHighlightBoxesCount = 0;
+
+function maybeHideOverlayWindow() {
+  try {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      if (!isScreenPadActive && !isWhiteboardActive && activeHighlightBoxesCount === 0) {
+        overlayWindow.hide();
+      }
+    }
+  } catch (err) {
+    console.error('[ScreenOverlay] Failed in maybeHideOverlayWindow:', err);
+  }
+}
+
 // ── Screen Glow Border ────────────────────────────────────────────────────────
 export function showScreenGlow(promptText?: string, mode?: 'user-speaking' | 'thinking' | 'executing' | 'speaking') {
   try {
@@ -93,9 +109,7 @@ export function hideScreenGlow() {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('overlay:hide');
       setTimeout(() => {
-        if (overlayWindow && !overlayWindow.isDestroyed()) {
-          overlayWindow.hide();
-        }
+        maybeHideOverlayWindow();
       }, 450);
     }
   } catch (err) {
@@ -105,6 +119,9 @@ export function hideScreenGlow() {
 
 export function destroyOverlayWindow() {
   try {
+    isScreenPadActive = false;
+    isWhiteboardActive = false;
+    activeHighlightBoxesCount = 0;
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.destroy();
       overlayWindow = null;
@@ -117,6 +134,7 @@ export function destroyOverlayWindow() {
 // ── ScreenPad ─────────────────────────────────────────────────────────────────
 export function showScreenPad(content: Partial<ScreenPadContent>) {
   try {
+    isScreenPadActive = true;
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
       win.showInactive();
@@ -131,10 +149,14 @@ export function showScreenPad(content: Partial<ScreenPadContent>) {
 
 export function closeScreenPad() {
   try {
+    isScreenPadActive = false;
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('overlay:screenpad-close');
-      // Restore pass-through mouse events
-      overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+      // If whiteboard is active, keep mouse interaction enabled; otherwise pass-through
+      if (!isWhiteboardActive) {
+        overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+      }
+      maybeHideOverlayWindow();
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to close ScreenPad:', err);
@@ -144,6 +166,7 @@ export function closeScreenPad() {
 // ── Highlight Boxes ───────────────────────────────────────────────────────────
 export function showHighlightBox(box: Partial<HighlightBox>) {
   try {
+    activeHighlightBoxesCount++;
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
       win.showInactive();
@@ -156,8 +179,10 @@ export function showHighlightBox(box: Partial<HighlightBox>) {
 
 export function closeHighlightBox(id: string) {
   try {
+    if (activeHighlightBoxesCount > 0) activeHighlightBoxesCount--;
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('overlay:box-close', { id });
+      maybeHideOverlayWindow();
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to close highlight box:', err);
@@ -166,8 +191,10 @@ export function closeHighlightBox(id: string) {
 
 export function clearAllHighlightBoxes() {
   try {
+    activeHighlightBoxesCount = 0;
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('overlay:boxes-clear');
+      maybeHideOverlayWindow();
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to clear highlight boxes:', err);
@@ -177,6 +204,7 @@ export function clearAllHighlightBoxes() {
 // ── Interactive Whiteboard & Explainer Overlay ───────────────────────────────
 export function showWhiteboardStep(payload: Record<string, unknown>) {
   try {
+    isWhiteboardActive = true;
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
       win.show();
@@ -191,6 +219,7 @@ export function showWhiteboardStep(payload: Record<string, unknown>) {
 
 export function showWhiteboardDiagram(payload: Record<string, unknown>) {
   try {
+    isWhiteboardActive = true;
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
       win.show();
@@ -205,6 +234,7 @@ export function showWhiteboardDiagram(payload: Record<string, unknown>) {
 
 export function addWhiteboardClarification(payload: Record<string, unknown>) {
   try {
+    isWhiteboardActive = true;
     const win = createOverlayWindow();
     if (win && !win.isDestroyed()) {
       win.show();
@@ -229,9 +259,13 @@ export function clearWhiteboard() {
 
 export function closeWhiteboard() {
   try {
+    isWhiteboardActive = false;
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       sendToOverlay('overlay:whiteboard-close');
-      overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+      if (!isScreenPadActive) {
+        overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+      }
+      maybeHideOverlayWindow();
     }
   } catch (err) {
     console.error('[ScreenOverlay] Failed to close whiteboard:', err);

@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Set
 from fastapi import WebSocket
 from backend.config import config
 
-logger = logging.getLogger("hey_jave.bridge")
+logger = logging.getLogger("cup_work.bridge")
 
 class ElectronBridge:
     """

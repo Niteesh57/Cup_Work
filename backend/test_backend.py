@@ -19,7 +19,7 @@ async def run_tests():
     print("=================================================================")
 
     # Use an isolated test database
-    temp_db = Path(tempfile.gettempdir()) / "test_hey_jave_multiuser.sqlite"
+    temp_db = Path(tempfile.gettempdir()) / "test_cup_work_multiuser.sqlite"
     if temp_db.exists():
         temp_db.unlink()
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from backend.config import config
 
-logger = logging.getLogger("hey_jave.storage")
+logger = logging.getLogger("cup_work.storage")
 
 class SqliteStore:
     """

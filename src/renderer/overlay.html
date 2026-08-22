@@ -322,11 +322,38 @@
     }
     .sp-content .md-code-header {
       background: #131b2e;
-      padding: 4px 10px;
-      font-size: 11px;
+      padding: 6px 12px;
+      font-size: 11.5px;
       font-family: 'Fira Code', monospace;
       color: #94a3b8;
       border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .sp-content .md-code-copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #cbd5e1;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+    .sp-content .md-code-copy-btn:hover {
+      background: rgba(66, 133, 244, 0.3);
+      border-color: #60a5fa;
+      color: #ffffff;
+    }
+    .sp-content .md-code-copy-btn.copied {
+      background: rgba(16, 185, 129, 0.3);
+      border-color: #34d399;
+      color: #a7f3d0;
     }
     .sp-content .md-code-block pre {
       padding: 10px 12px;
@@ -367,7 +394,6 @@
     .sp-btn.confirm:hover { background: rgba(16, 185, 129, 0.35); border-color: #34d399; color: #ffffff; }
     .sp-btn-hidden { display: none !important; }
     .sp-hint { font-size: 11px; color: #64748b; font-weight: 500; }
-    .sp-btn:hover { background: rgba(66,133,244,0.3); border-color: rgba(66,133,244,0.6); }
     .sp-btn.confirm {
       background: rgba(52,168,83,0.15);
       border-color: rgba(52,168,83,0.3);
@@ -845,6 +871,76 @@
     let padRequiresConfirmation = false;
     let padContent = '';
 
+    function copyTextToClipboard(text, btnElement, originalText = 'Copy') {
+      let copied = false;
+      try {
+        const { clipboard } = require('electron');
+        if (clipboard && typeof clipboard.writeText === 'function') {
+          clipboard.writeText(text);
+          copied = true;
+        }
+      } catch (e) {
+        console.warn('Native clipboard failed:', e);
+      }
+
+      function showSuccess() {
+        if (!btnElement) return;
+        btnElement.textContent = '✓ Copied!';
+        btnElement.classList.add('copied');
+        setTimeout(() => {
+          btnElement.textContent = originalText;
+          btnElement.classList.remove('copied');
+        }, 1800);
+      }
+
+      if (copied) {
+        showSuccess();
+        return;
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          showSuccess();
+        }).catch(() => {
+          fallbackCopy(text, btnElement, originalText);
+        });
+      } else {
+        fallbackCopy(text, btnElement, originalText);
+      }
+    }
+
+    function fallbackCopy(text, btnElement, originalText) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (btnElement) {
+          btnElement.textContent = '✓ Copied!';
+          btnElement.classList.add('copied');
+          setTimeout(() => {
+            btnElement.textContent = originalText;
+            btnElement.classList.remove('copied');
+          }, 1800);
+        }
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      }
+    }
+
+    window.copyCodeFromBase64 = function(btn, b64) {
+      try {
+        const decoded = decodeURIComponent(escape(atob(b64)));
+        copyTextToClipboard(decoded, btn, 'Copy');
+      } catch (e) {
+        console.error('Failed to decode base64 code:', e);
+      }
+    };
+
     function renderMarkdown(md) {
       if (!md) return '';
       let text = String(md);
@@ -854,7 +950,22 @@
 
       // Code blocks ```lang ... ```
       text = text.replace(/```([\w]*)\r?\n([\s\S]*?)```/g, (_m, lang, code) => {
-        return `<div class="md-code-block"><div class="md-code-header">${lang || 'code'}</div><pre><code>${code.trim()}</code></pre></div>`;
+        const cleanCode = code.trim();
+        let b64 = '';
+        try {
+          b64 = btoa(unescape(encodeURIComponent(cleanCode)));
+        } catch (e) {
+          b64 = '';
+        }
+        return `<div class="md-code-block">
+          <div class="md-code-header">
+            <span>${lang || 'code'}</span>
+            <button class="md-code-copy-btn" onclick="copyCodeFromBase64(this, '${b64}')" title="Copy code">
+              Copy
+            </button>
+          </div>
+          <pre><code>${cleanCode}</code></pre>
+        </div>`;
       });
 
       // Inline code `code`
@@ -985,12 +1096,8 @@
     });
 
     document.getElementById('sp-copy').addEventListener('click', () => {
-      navigator.clipboard.writeText(padContent).then(() => {
-        const copyBtn = document.getElementById('sp-copy');
-        const orig = copyBtn.textContent;
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
-      });
+      const copyBtn = document.getElementById('sp-copy');
+      copyTextToClipboard(padContent, copyBtn, 'Copy Markdown');
     });
 
     document.getElementById('sp-confirm').addEventListener('click', async () => {

@@ -8,7 +8,7 @@ from google.genai import types
 from backend.core.client import get_genai_client
 from backend.config import config
 
-logger = logging.getLogger("hey_jave.transcribe")
+logger = logging.getLogger("cup_work.transcribe")
 
 
 class VoiceTranscriber:
