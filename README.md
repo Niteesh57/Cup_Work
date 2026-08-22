@@ -19,25 +19,25 @@
 </div>
 
 ## 🌟 Table of Contents
-- [⚡ Quick Start (2-Minute Spin-Up)](#-quick-start-2-minute-spin-up)
-- [📖 Overview](#-overview)
-- [🚀 Key Pillars & Capabilities](#-key-pillars--capabilities)
-- [🏗️ Full System Architecture & Agentic Execution Loop](#-full-system-architecture--agentic-execution-loop)
-- [🤖 Agent Tool Capabilities & Model Execution Matrix](#-agent-tool-capabilities--model-execution-matrix)
-- [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#-how-gemini-models-execute-desktop-workflows-deep-dive)
-- [📁 Project Structure](#-project-structure)
-- [🛠️ Detailed Step-by-Step Spin-Up Guide](#-detailed-step-by-step-spin-up-guide)
+- [⚡ Quick Start (2-Minute Spin-Up)](#quick-start-2-minute-spin-up)
+- [📖 Overview](#overview)
+- [🚀 Key Pillars & Capabilities](#key-pillars--capabilities)
+- [🏗️ Full System Architecture & Agentic Execution Loop](#full-system-architecture--agentic-execution-loop)
+- [🤖 Agent Tool Capabilities & Model Execution Matrix](#agent-tool-capabilities--model-execution-matrix)
+- [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#how-gemini-models-execute-desktop-workflows-deep-dive)
+- [📁 Project Structure](#project-structure)
+- [🛠️ Detailed Step-by-Step Spin-Up Guide](#detailed-step-by-step-spin-up-guide)
   - [Prerequisites](#prerequisites)
   - [Step 1: Get a Gemini API Key](#step-1-get-a-gemini-api-key)
   - [Step 2: Clone the Repository & Configure Environment](#step-2-clone-the-repository--configure-environment)
   - [Step 3: Start the Backend Server (Terminal 1)](#step-3-start-the-backend-server-terminal-1)
   - [Step 4: Launch the Desktop Client (Terminal 2)](#step-4-launch-the-desktop-client-terminal-2)
-- [🧪 60-Second "Test Drive" / Verification Guide](#-60-second-test-drive--verification-guide)
-- [⚙️ Environment Configuration Reference](#-environment-configuration-reference)
-- [📡 API & WebSocket Protocol](#-api--websocket-protocol)
-- [🩺 Troubleshooting & Common Gotchas](#-troubleshooting--common-gotchas)
-- [🧪 Running Automated Tests](#-running-automated-tests)
-- [📄 License](#-license)
+- [🧪 60-Second "Test Drive" / Verification Guide](#60-second-test-drive--verification-guide)
+- [⚙️ Environment Configuration Reference](#environment-configuration-reference)
+- [📡 API & WebSocket Protocol](#api--websocket-protocol)
+- [🩺 Troubleshooting & Common Gotchas](#troubleshooting--common-gotchas)
+- [🧪 Running Automated Tests](#running-automated-tests)
+- [📄 License](#license)
 
 ---
 
@@ -129,7 +129,7 @@ For end-to-end desktop task execution:
 
 ---
 
-## 🏗️ System Architecture & Agentic Execution Loop
+## 🏗️ Full System Architecture & Agentic Execution Loop
 
 Cup Work follows a closed-loop **Taskmaster workflow**:
 
@@ -228,9 +228,9 @@ flowchart TB
 
     Root --> TTS
     TTS --> Voice
-
     Specialists --> Overlay
-    ```
+```
+
 ---
 
 ## 🤖 Agent Tool Capabilities & Model Execution Matrix
