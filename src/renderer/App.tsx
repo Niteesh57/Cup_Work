@@ -964,37 +964,59 @@ export default function App() {
 
 
       const durationMs = Date.now() - startTime;
-      const stepsCount = response.steps?.length || 0;
-      const promptTokens = Math.round((trimmed.length || 20) * 1.3 + stepsCount * 380 + 320);
-      const completionTokens = Math.round((response.message?.length || 50) * 0.75 + stepsCount * 120);
 
-      const finalAgentMsg: ChatMessage = {
-        id: agentMsgId,
-        role: 'agent',
-        text: response.message,
-        status: response.success ? 'done' : 'error',
-        steps: response.steps && response.steps.length > 0 ? response.steps : [],
-        spokeVoice: spokeVoiceOutput,
-        hadWhiteboard: hadWhiteboardTool,
-        whiteboardData: extractedWhiteboardData,
-        durationMs,
-        outputTokens: {
-          prompt: promptTokens,
-          completion: completionTokens,
-          total: promptTokens + completionTokens,
-        },
-      };
+      let savedFinalMsg: ChatMessage | null = null;
+      setMessages(prev => prev.map(m => {
+        if (m.id === agentMsgId) {
+          const liveSteps = m.steps || [];
+          const returnedSteps = response.steps || [];
+          const combinedSteps: AgentStep[] = [...liveSteps];
+          for (const s of returnedSteps) {
+            const exists = combinedSteps.some(
+              cs => (cs.id && s.id && cs.id === s.id) ||
+                    (cs.actionName === s.actionName && cs.timestamp === s.timestamp)
+            );
+            if (!exists) {
+              combinedSteps.push(s);
+            }
+          }
+          const finalStepsList = combinedSteps.length > 0 ? combinedSteps : (returnedSteps.length > 0 ? returnedSteps : liveSteps);
+          const stepsCount = finalStepsList.length;
+          const promptTokens = Math.round((trimmed.length || 20) * 1.3 + stepsCount * 380 + 320);
+          const completionTokens = Math.round((response.message?.length || 50) * 0.75 + stepsCount * 120);
 
+          const finalAgentMsg: ChatMessage = {
+            id: agentMsgId,
+            role: 'agent',
+            text: response.message,
+            status: response.success ? 'done' : 'error',
+            steps: finalStepsList,
+            spokeVoice: spokeVoiceOutput,
+            hadWhiteboard: hadWhiteboardTool,
+            whiteboardData: extractedWhiteboardData,
+            durationMs,
+            outputTokens: {
+              prompt: promptTokens,
+              completion: completionTokens,
+              total: promptTokens + completionTokens,
+            },
+          };
+          savedFinalMsg = finalAgentMsg;
+          return finalAgentMsg;
+        }
+        return m;
+      }));
 
-      setMessages(prev => prev.map(m => m.id === agentMsgId ? finalAgentMsg : m));
       setStatus(response.success ? 'completed' : 'error');
 
       // Persist completed agent message in SQLite daily session
-      void ipc()?.invoke('session:save-message', {
-        ...finalAgentMsg,
-        userId: userIdentity.userId || 'usr_local',
-        deviceId: userIdentity.deviceId || 'desktop-main',
-      });
+      if (savedFinalMsg) {
+        void ipc()?.invoke('session:save-message', {
+          ...(savedFinalMsg as ChatMessage),
+          userId: userIdentity.userId || 'usr_local',
+          deviceId: userIdentity.deviceId || 'desktop-main',
+        });
+      }
 
 
     } catch (err) {
@@ -1039,7 +1061,7 @@ export default function App() {
     if (status === 'executing') return 'Agent is working…';
     if (status === 'completed') return 'Done';
     if (status === 'error') return 'Something went wrong';
-    return config.geminiModel || 'gemini-2.5-flash';
+    return config.geminiModel || 'gemini-3.7-flash';
   };
 
   const dotClass = isAnimationActive ? 'busy' : status === 'error' ? 'error' : '';
@@ -1571,6 +1593,7 @@ function AgentMessage({
           hadWhiteboard={msg.hadWhiteboard}
           error={isError ? msg.text : undefined}
           activeAgent={msg.activeAgent}
+          hitl={msg.hitl}
           outputTokens={msg.outputTokens}
           totalDurationMs={msg.durationMs}
         />

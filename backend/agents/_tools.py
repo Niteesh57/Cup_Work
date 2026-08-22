@@ -570,7 +570,7 @@ async def search_and_explore_places_tool(
 
         resp = await asyncio.to_thread(
             client.models.generate_content,
-            model="gemini-2.5-flash",
+            model="gemini-3.7-flash",
             contents=f"Provide a comprehensive, structured recommendation with names, exact addresses, ratings, key highlights, and helpful advice for: {full_query}",
             config=types.GenerateContentConfig(
                 tools=tools
@@ -606,7 +606,7 @@ async def read_grounded_news_tool(
         tools = [types.Tool(google_search=types.GoogleSearch())]
         resp = await asyncio.to_thread(
             client.models.generate_content,
-            model="gemini-2.5-flash",
+            model="gemini-3.7-flash",
             contents=f"Find the most recent, breaking news headlines and key bullet point summaries for: {topic}. Include reputable sources.",
             config=types.GenerateContentConfig(
                 tools=tools

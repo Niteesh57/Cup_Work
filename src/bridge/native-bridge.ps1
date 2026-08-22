@@ -98,8 +98,9 @@ public class NativeBridge {
     public const int SW_SHOWNORMAL = 1;
     public const int SW_SHOWMINIMIZED = 2;
     public const int SW_SHOWMAXIMIZED = 3;
-    public const int SW_RESTORE = 9;
+    public const int SW_SHOW = 5;
     public const int SW_MINIMIZE = 6;
+    public const int SW_RESTORE = 9;
 
     public const uint KEYEVENTF_KEYUP = 0x0002;
 
@@ -229,7 +230,7 @@ public class NativeBridge {
         return bounds.Width + "x" + bounds.Height;
     }
 
-    public static bool FocusWindowByTitle(string titleSubstring) {
+    public static bool FocusWindowByTitle(string titleSubstring, bool maximize = false) {
         IntPtr targetHwnd = IntPtr.Zero;
         var windows = GetTopLevelWindows();
         foreach (var win in windows) {
@@ -257,10 +258,12 @@ public class NativeBridge {
         }
 
         if (targetHwnd != IntPtr.Zero) {
-            if (IsIconic(targetHwnd)) {
+            if (maximize) {
+                ShowWindow(targetHwnd, SW_SHOWMAXIMIZED);
+            } else if (IsIconic(targetHwnd)) {
                 ShowWindow(targetHwnd, SW_RESTORE);
             } else {
-                ShowWindow(targetHwnd, SW_SHOWNORMAL);
+                ShowWindow(targetHwnd, SW_SHOW);
             }
 
             try {
@@ -281,6 +284,10 @@ public class NativeBridge {
             return true;
         }
         return false;
+    }
+
+    public static bool MaximizeWindowByTitle(string titleSubstring) {
+        return FocusWindowByTitle(titleSubstring, true);
     }
 
     public static bool MinimizeWindowByTitle(string titleSubstring) {

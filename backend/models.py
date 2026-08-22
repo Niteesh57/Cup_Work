@@ -14,16 +14,9 @@ AVAILABLE_MODELS: List[ModelInfo] = [
     ModelInfo(
         id="gemini-3.7-flash",
         displayName="Gemini 3.7 Flash 🚀",
-        description="Next-generation high efficiency & reasoning flash model",
+        description="Next-generation flagship high efficiency & reasoning flash model",
         isDefault=True,
         badge="🚀 Default",
-    ),
-    ModelInfo(
-        id="gemini-2.5-flash",
-        displayName="Gemini 2.5 Flash ⚡",
-        description="Fast, multimodal, low latency desktop agent model",
-        isDefault=False,
-        badge="⚡ Stable",
     ),
 ]
 

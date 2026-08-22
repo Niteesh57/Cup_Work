@@ -223,6 +223,11 @@ $vTop = [System.Windows.SystemParameters]::VirtualScreenTop
 $vWidth = [System.Windows.SystemParameters]::VirtualScreenWidth
 $vHeight = [System.Windows.SystemParameters]::VirtualScreenHeight
 
+$pWidth = [System.Windows.SystemParameters]::PrimaryScreenWidth
+$pHeight = [System.Windows.SystemParameters]::PrimaryScreenHeight
+$screenW = if ($pWidth -gt 0) { $pWidth } else { $vWidth }
+$screenH = if ($pHeight -gt 0) { $pHeight } else { $vHeight }
+
 $window.Left = $vLeft
 $window.Top = $vTop
 $window.Width = $vWidth
@@ -427,9 +432,9 @@ function Convert-ArrowCoordinates($a, $targetW, $targetH, $imgW, $imgH) {
 
 # 1. Render Boxes
 foreach ($b in $Boxes) {
-    $coords = Convert-BoxCoordinates $b $vWidth $vHeight $ImageWidth $ImageHeight
-    $bx = $coords.x
-    $by = $coords.y
+    $coords = Convert-BoxCoordinates $b $screenW $screenH $ImageWidth $ImageHeight
+    $bx = (-$vLeft) + $coords.x
+    $by = (-$vTop) + $coords.y
     $bw = $coords.width
     $bh = $coords.height
     $bColor = "$($b.color)"
@@ -522,11 +527,11 @@ foreach ($b in $Boxes) {
 
 # 2. Render Arrows
 foreach ($a in $Arrows) {
-    $coords = Convert-ArrowCoordinates $a $vWidth $vHeight $ImageWidth $ImageHeight
-    $fx = $coords.fromX
-    $fy = $coords.fromY
-    $tx = $coords.toX
-    $ty = $coords.toY
+    $coords = Convert-ArrowCoordinates $a $screenW $screenH $ImageWidth $ImageHeight
+    $fx = (-$vLeft) + $coords.fromX
+    $fy = (-$vTop) + $coords.fromY
+    $tx = (-$vLeft) + $coords.toX
+    $ty = (-$vTop) + $coords.toY
     $aColor = "$($a.color)"
     $aLabel = "$($a.label)"
 
@@ -605,21 +610,57 @@ foreach ($a in $Arrows) {
     }
 }
 
-# Dismiss Handlers: ESC key or background click
+# Floating Dismiss Button (Top-Right HUD pill)
+$hudPill = New-Object System.Windows.Controls.Border
+$hudPill.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString("#E618191C")
+$hudPill.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFromString("#475569")
+$hudPill.BorderThickness = [System.Windows.Thickness]::new(1.5)
+$hudPill.CornerRadius = [System.Windows.CornerRadius]::new(14)
+$hudPill.Padding = [System.Windows.Thickness]::new(12, 6, 12, 6)
+$hudPill.Cursor = [System.Windows.Input.Cursors]::Hand
+
+$hudShadow = New-Object System.Windows.Media.Effects.DropShadowEffect
+$hudShadow.Color = [System.Windows.Media.Color]::FromRgb(0, 0, 0)
+$hudShadow.BlurRadius = 14
+$hudShadow.ShadowDepth = 4
+$hudShadow.Opacity = 0.85
+$hudPill.Effect = $hudShadow
+
+$hudSp = New-Object System.Windows.Controls.StackPanel
+$hudSp.Orientation = [System.Windows.Controls.Orientation]::Horizontal
+
+$hudIcon = New-Object System.Windows.Controls.TextBlock
+$hudIcon.Text = "✕ "
+$hudIcon.FontWeight = [System.Windows.FontWeights]::Bold
+$hudIcon.FontSize = 11
+$hudIcon.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString("#EF4444")
+[void]$hudSp.Children.Add($hudIcon)
+
+$hudTxt = New-Object System.Windows.Controls.TextBlock
+$hudTxt.Text = "Clear Annotations (ESC)"
+$hudTxt.FontWeight = [System.Windows.FontWeights]::SemiBold
+$hudTxt.FontSize = 11.5
+$hudTxt.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString("#F8FAFC")
+[void]$hudSp.Children.Add($hudTxt)
+
+$hudPill.Child = $hudSp
+$hudPill.Add_MouseDown({
+    $window.Close()
+})
+
+# Position HUD button at top-right
+[System.Windows.Controls.Canvas]::SetLeft($hudPill, (-$vLeft) + $screenW - 220)
+[System.Windows.Controls.Canvas]::SetTop($hudPill, (-$vTop) + 18)
+[void]$canvas.Children.Add($hudPill)
+
+# Dismiss Handlers: ESC key
 $window.Add_KeyDown({
     if ($_.Key -eq [System.Windows.Input.Key]::Escape) {
         $window.Close()
     }
 })
 
-$mainGrid = $window.FindName("MainGrid")
-if ($mainGrid) {
-    $mainGrid.Add_MouseDown({
-        $window.Close()
-    })
-}
-
-# Auto-dismiss timer if DurationSeconds > 0
+# Auto-dismiss timer only if DurationSeconds > 0
 if ($DurationSeconds -gt 0) {
     $timer = New-Object System.Windows.Threading.DispatcherTimer
     $timer.Interval = [TimeSpan]::FromSeconds($DurationSeconds)

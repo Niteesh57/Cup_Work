@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, session, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, session, nativeImage, screen } from 'electron';
+import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -41,10 +42,38 @@ const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
 const BACKEND_WS = process.env.PYTHON_BACKEND_WS || `${BACKEND_HTTP.replace(/^http/, 'ws')}/ws`;
 
 let mainWindow: BrowserWindow | null = null;
+let savedWindowBounds: { x: number; y: number; width: number; height: number } | null = null;
 let wsClient: WebSocket | null = null;
 let wsReconnectTimer: NodeJS.Timeout | null = null;
 const uiaBridge = new UiaBridge();
 const elementResolver = new ElementResolver(uiaBridge);
+
+export function makeWindowCompact(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (!savedWindowBounds) {
+      savedWindowBounds = mainWindow.getBounds();
+    }
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
+    const compactW = 420;
+    const compactH = 240;
+    mainWindow.setBounds({
+      x: screenW - compactW - 16,
+      y: screenH - compactH - 16,
+      width: compactW,
+      height: compactH,
+    });
+    mainWindow.setAlwaysOnTop(true, 'floating');
+  }
+}
+
+export function restoreWindowSize(): void {
+  if (mainWindow && !mainWindow.isDestroyed() && savedWindowBounds) {
+    mainWindow.setBounds(savedWindowBounds);
+    mainWindow.setAlwaysOnTop(false);
+    savedWindowBounds = null;
+  }
+}
 
 
 // ── Complete Clean Exit ───────────────────────────────────────────────────────
@@ -371,38 +400,91 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
+// ── Robust HTTP Client for Long-Running Agent Tasks (No 5-min timeout) ───────
+function postJsonToBackend<T>(endpoint: string, payload: unknown, timeoutMs = 1200000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(endpoint, BACKEND_HTTP);
+    const data = JSON.stringify(payload);
+    const req = http.request(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(data),
+          'Connection': 'keep-alive',
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(body) as T);
+            } catch {
+              reject(new Error(`Invalid JSON response from backend: ${body.slice(0, 200)}`));
+            }
+          } else {
+            reject(new Error(`Python backend returned HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error(`Python Brain request timed out after ${timeoutMs / 1000}s`));
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(data);
+    req.end();
+  });
+}
+
 // ── IPC: Execute Prompt (Routed to Python Agent Brain) ────────────────────────
 ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string; audioBase64?: string; mimeType?: string; apiKey?: string; model?: string; taskId?: string; userId?: string; deviceId?: string; deviceName?: string }) => {
   console.log('[agent:execute-prompt] Sending to Python Brain:', request.prompt || '[Direct Audio]', 'hasAudio:', !!request.audioBase64, 'taskId:', request.taskId);
   showScreenGlow('Thinking…');
 
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/agent/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: request.prompt,
-        audioBase64: request.audioBase64,
-        mimeType: request.mimeType,
-        taskId: request.taskId,
-        userId: request.userId,
-        deviceId: request.deviceId || localDeviceId,
-        deviceName: request.deviceName || localDeviceName,
-        model: request.model,
-        apiKey: request.apiKey,
-      }),
-    });
+    const data = await postJsonToBackend<{
+      success: boolean;
+      message: string;
+      steps?: unknown[];
+      error?: string;
+      userId?: string;
+      deviceId?: string;
+      userName?: string;
+      deviceName?: string;
+      whiteboardData?: Record<string, unknown>;
+      hadWhiteboard?: boolean;
+    }>('/api/agent/chat', {
+      prompt: request.prompt,
+      audioBase64: request.audioBase64,
+      mimeType: request.mimeType,
+      taskId: request.taskId,
+      userId: request.userId,
+      deviceId: request.deviceId || localDeviceId,
+      deviceName: request.deviceName || localDeviceName,
+      model: request.model,
+      apiKey: request.apiKey,
+    }, 1200000);
 
-    if (!res.ok) {
-      throw new Error(`Python backend returned HTTP ${res.status}: ${res.statusText}`);
-    }
-
-    const data = await res.json() as { success: boolean; message: string; steps?: unknown[]; error?: string; userId?: string; deviceId?: string; userName?: string; deviceName?: string };
     console.log('[agent:execute-prompt] Python Brain answered:', JSON.stringify(data.message), 'user:', data.userName, 'device:', data.deviceName);
     return {
       success: data.success,
       message: data.message,
       steps: data.steps || [],
+      whiteboardData: data.whiteboardData,
+      hadWhiteboard: data.hadWhiteboard,
       error: data.error,
       userId: data.userId,
       deviceId: data.deviceId,
@@ -485,6 +567,16 @@ ipcMain.handle('agent:glow-show', (_event, { text, mode }: { text?: string; mode
 });
 ipcMain.handle('agent:glow-hide', () => {
   hideScreenGlow();
+  return { success: true };
+});
+
+// ── IPC: Window Compact / Restore Handlers ────────────────────────────────────
+ipcMain.handle('window:make-compact', () => {
+  makeWindowCompact();
+  return { success: true };
+});
+ipcMain.handle('window:restore', () => {
+  restoreWindowSize();
   return { success: true };
 });
 

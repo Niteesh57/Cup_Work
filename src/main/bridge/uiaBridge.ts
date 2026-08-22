@@ -91,10 +91,17 @@ export class UiaBridge {
   }
 
   /**
-   * Brings a window matching the title substring to the foreground
+   * Brings a window matching the title substring to the foreground and optionally maximizes it
    */
-  public async focusWindow(title: string): Promise<UiaActionResult> {
-    return this.executeCommand<UiaActionResult>('FOCUS_WINDOW', { title });
+  public async focusWindow(title: string, maximize: boolean = true): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('FOCUS_WINDOW', { title, maximize });
+  }
+
+  /**
+   * Maximizes a window matching the title substring
+   */
+  public async maximizeWindow(title: string): Promise<UiaActionResult> {
+    return this.executeCommand<UiaActionResult>('MAXIMIZE_WINDOW', { title });
   }
 
   /**
@@ -458,7 +465,12 @@ export class UiaBridge {
       case 'minimize_window':
         return (await this.minimizeWindow(String(args.windowTitle || args.title || ''))) as unknown as Record<string, unknown>;
       case 'focus_window':
-        return (await this.focusWindow(String(args.windowTitle || args.title || ''))) as unknown as Record<string, unknown>;
+        return (await this.focusWindow(
+          String(args.windowTitle || args.title || ''),
+          args.maximize !== undefined ? Boolean(args.maximize) : true
+        )) as unknown as Record<string, unknown>;
+      case 'maximize_window':
+        return (await this.maximizeWindow(String(args.windowTitle || args.title || ''))) as unknown as Record<string, unknown>;
       case 'launch_app':
         return (await this.launchApp(String(args.appName || ''))) as unknown as Record<string, unknown>;
       case 'press_hotkey':

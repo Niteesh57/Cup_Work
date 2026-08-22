@@ -197,92 +197,176 @@
     /* ── ScreenPad ───────────────────────────────────────────────────────── */
     #screenpad {
       position: absolute;
-      bottom: 20px;
+      top: 100px;
       left: 50%;
       transform: translateX(-50%);
-      min-width: 420px;
-      max-width: 680px;
-      background: rgba(10,13,22,0.96);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(66,133,244,0.35);
-      border-radius: 14px;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04);
-      color: #e2e8f0;
+      min-width: 440px;
+      min-height: 240px;
+      max-width: 90vw;
+      max-height: 85vh;
+      width: 580px;
+      background: rgba(13, 17, 28, 0.98);
+      backdrop-filter: blur(24px);
+      border: 1.5px solid rgba(66, 133, 244, 0.45);
+      border-radius: 16px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      color: #f1f5f9;
       font-size: 13px;
       display: none;
       flex-direction: column;
-      overflow: hidden;
       pointer-events: auto;
-      animation: pad-slide-up 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      z-index: 50;
+      resize: both;
+      overflow: hidden;
+      animation: pad-slide-up 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 1000;
     }
     #screenpad.visible { display: flex; }
     @keyframes pad-slide-up {
-      from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-      to   { opacity: 1; transform: translateX(-50%) translateY(0);    }
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0);    }
     }
     .sp-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 14px 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(20, 26, 44, 0.8);
+      cursor: move;
+      user-select: none;
       gap: 8px;
     }
     .sp-title {
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 700;
       color: #93c5fd;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .sp-close-btn {
-      background: none;
-      border: none;
-      color: rgba(255,255,255,0.4);
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 1;
-      padding: 0 4px;
-      border-radius: 4px;
-      pointer-events: auto;
-      transition: color 0.15s, background 0.15s;
-    }
-    .sp-close-btn:hover { color: #ea4335; background: rgba(234,67,53,0.1); }
-    .sp-content {
-      padding: 12px 14px;
-      font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
-      font-size: 12.5px;
-      color: #a5f3fc;
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 280px;
-      overflow-y: auto;
-      line-height: 1.6;
-    }
-    .sp-content::-webkit-scrollbar { width: 4px; }
-    .sp-content::-webkit-scrollbar-track { background: transparent; }
-    .sp-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
-    .sp-actions {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 14px 12px;
-      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .sp-badge {
+      background: rgba(66, 133, 244, 0.2);
+      border: 1px solid rgba(66, 133, 244, 0.4);
+      color: #bfdbfe;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+    .sp-close-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #cbd5e1;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      pointer-events: auto;
+      transition: all 0.15s;
+    }
+    .sp-close-btn:hover { color: #ffffff; background: #ef4444; border-color: #ef4444; }
+
+    /* Markdown Content in ScreenPad */
+    .sp-content {
+      flex: 1;
+      padding: 16px;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px;
+      color: #f1f5f9;
+      overflow-y: auto;
+      line-height: 1.65;
+      user-select: text;
+    }
+    .sp-content::-webkit-scrollbar { width: 6px; }
+    .sp-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+    .sp-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    
+    .sp-content h1, .sp-content .md-h1 { font-size: 16px; font-weight: 700; color: #ffffff; margin: 10px 0 6px; }
+    .sp-content h2, .sp-content .md-h2 { font-size: 14.5px; font-weight: 700; color: #93c5fd; margin: 8px 0 4px; }
+    .sp-content h3, .sp-content .md-h3 { font-size: 13.5px; font-weight: 600; color: #67e8f9; margin: 6px 0 4px; }
+    .sp-content p, .sp-content .md-p { margin-bottom: 8px; color: #e2e8f0; }
+    .sp-content strong { color: #ffffff; font-weight: 700; }
+    .sp-content em { color: #cbd5e1; font-style: italic; }
+    .sp-content ol, .sp-content .md-ol { margin: 6px 0 10px 22px; list-style-type: decimal; }
+    .sp-content ul, .sp-content .md-ul { margin: 6px 0 10px 22px; list-style-type: disc; }
+    .sp-content li { margin-bottom: 6px; color: #e2e8f0; }
+    .sp-content blockquote, .sp-content .md-quote {
+      border-left: 3.5px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+      padding: 6px 12px;
+      border-radius: 0 6px 6px 0;
+      margin: 8px 0;
+      color: #bfdbfe;
+    }
+    .sp-content code.md-inline-code {
+      font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+      background: rgba(255, 255, 255, 0.12);
+      color: #38bdf8;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sp-content .md-code-block {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .sp-content .md-code-header {
+      background: #131b2e;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-family: 'Fira Code', monospace;
+      color: #94a3b8;
+      border-bottom: 1px solid #1e293b;
+    }
+    .sp-content .md-code-block pre {
+      padding: 10px 12px;
+      margin: 0;
+      font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+      font-size: 12px;
+      color: #a5f3fc;
+      overflow-x: auto;
+    }
+
+    .sp-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px 10px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(15, 20, 32, 0.9);
+      gap: 8px;
     }
     .sp-btn {
-      background: rgba(66,133,244,0.15);
-      border: 1px solid rgba(66,133,244,0.3);
+      background: rgba(66,133,244,0.18);
+      border: 1px solid rgba(66,133,244,0.4);
       color: #93c5fd;
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 600;
-      padding: 5px 12px;
+      padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
       pointer-events: auto;
-      transition: background 0.15s, border-color 0.15s;
+      transition: all 0.15s;
     }
+    .sp-btn:hover { background: rgba(66,133,244,0.3); border-color: #60a5fa; color: #ffffff; }
+    .sp-btn.confirm {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    .sp-btn.confirm:hover { background: rgba(16, 185, 129, 0.35); border-color: #34d399; color: #ffffff; }
+    .sp-btn-hidden { display: none !important; }
+    .sp-hint { font-size: 11px; color: #64748b; font-weight: 500; }
     .sp-btn:hover { background: rgba(66,133,244,0.3); border-color: rgba(66,133,244,0.6); }
     .sp-btn.confirm {
       background: rgba(52,168,83,0.15);
@@ -587,18 +671,22 @@
   <!-- ── Highlight Boxes Layer ──────────────────────────────────────────── -->
   <div id="box-layer"></div>
 
-  <!-- ── ScreenPad ──────────────────────────────────────────────────────── -->
+  <!-- ── ScreenPad (Draggable & Resizable Rich Markdown Card) ──────────── -->
   <div id="screenpad">
     <div class="sp-header">
-      <span class="sp-title">
-        <span id="sp-title-text">Suggestion</span>
-      </span>
-      <button class="sp-close-btn" id="sp-close" title="Close">✕</button>
+      <div class="sp-title">
+        <span class="sp-badge">SCREENPAD</span>
+        <span id="sp-title-text">Guidance &amp; Steps</span>
+      </div>
+      <button class="sp-close-btn" id="sp-close" title="Close (ESC)">✕</button>
     </div>
-    <pre class="sp-content" id="sp-content"></pre>
+    <div class="sp-content" id="sp-content"></div>
     <div class="sp-actions">
-      <button class="sp-btn" id="sp-copy">Copy</button>
-      <button class="sp-btn confirm sp-btn-hidden" id="sp-confirm">Confirm &amp; Save</button>
+      <div class="sp-hint">Press ESC to dismiss • Drag header to move • Resize from corner</div>
+      <div style="display:flex; gap:8px;">
+        <button class="sp-btn" id="sp-copy">Copy Markdown</button>
+        <button class="sp-btn confirm sp-btn-hidden" id="sp-confirm">Confirm &amp; Save</button>
+      </div>
     </div>
   </div>
 
@@ -753,15 +841,129 @@
       boxLayer.innerHTML = '';
     });
 
-    // ── ScreenPad ────────────────────────────────────────────────────────────
+    // ── ScreenPad (Rich Markdown, Draggable & Resizable) ─────────────────────
     let padRequiresConfirmation = false;
     let padContent = '';
 
+    function renderMarkdown(md) {
+      if (!md) return '';
+      let text = String(md);
+
+      // Escape HTML
+      text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      // Code blocks ```lang ... ```
+      text = text.replace(/```([\w]*)\r?\n([\s\S]*?)```/g, (_m, lang, code) => {
+        return `<div class="md-code-block"><div class="md-code-header">${lang || 'code'}</div><pre><code>${code.trim()}</code></pre></div>`;
+      });
+
+      // Inline code `code`
+      text = text.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+      // Headings
+      text = text.replace(/^### (.*$)/gim, '<h3 class="md-h3">$1</h3>');
+      text = text.replace(/^## (.*$)/gim, '<h2 class="md-h2">$1</h2>');
+      text = text.replace(/^# (.*$)/gim, '<h1 class="md-h1">$1</h1>');
+
+      // Bold and Italic
+      text = text.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+      text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      text = text.replace(/___([^_]+)___/g, '<strong><em>$1</em></strong>');
+      text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+      text = text.replace(/_([^_]+)_/g, '<em>$1</em>');
+
+      // Blockquotes
+      text = text.replace(/^\> (.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
+
+      // List parsing
+      const lines = text.split(/\r?\n/);
+      let inOl = false;
+      let inUl = false;
+      const processed = [];
+
+      for (let line of lines) {
+        const numMatch = line.match(/^\s*(\d+)\.\s+(.*)/);
+        const bulletMatch = line.match(/^\s*[-*•]\s+(.*)/);
+
+        if (numMatch) {
+          if (!inOl) { processed.push('<ol class="md-ol">'); inOl = true; }
+          if (inUl) { processed.push('</ul>'); inUl = false; }
+          processed.push(`<li>${numMatch[2]}</li>`);
+        } else if (bulletMatch) {
+          if (!inUl) { processed.push('<ul class="md-ul">'); inUl = true; }
+          if (inOl) { processed.push('</ol>'); inOl = false; }
+          processed.push(`<li>${bulletMatch[1]}</li>`);
+        } else {
+          if (inOl) { processed.push('</ol>'); inOl = false; }
+          if (inUl) { processed.push('</ul>'); inUl = false; }
+          const trimmed = line.trim();
+          if (trimmed.length > 0 && !trimmed.startsWith('<h') && !trimmed.startsWith('<blockquote') && !trimmed.startsWith('<div')) {
+            processed.push(`<p class="md-p">${line}</p>`);
+          } else {
+            processed.push(line);
+          }
+        }
+      }
+      if (inOl) processed.push('</ol>');
+      if (inUl) processed.push('</ul>');
+
+      return processed.join('\n');
+    }
+
+    // Draggable ScreenPad logic
+    const spHeader = document.querySelector('.sp-header');
+    let isDraggingPad = false;
+    let padOffsetX = 0;
+    let padOffsetY = 0;
+
+    spHeader.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.sp-close-btn') || e.target.closest('button')) return;
+      isDraggingPad = true;
+      const rect = screenpad.getBoundingClientRect();
+      padOffsetX = e.clientX - rect.left;
+      padOffsetY = e.clientY - rect.top;
+      screenpad.style.transform = 'none';
+      screenpad.style.bottom = 'auto';
+      screenpad.style.right = 'auto';
+      screenpad.style.left = `${rect.left}px`;
+      screenpad.style.top = `${rect.top}px`;
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingPad) return;
+      const newX = Math.max(10, Math.min(window.innerWidth - screenpad.offsetWidth - 10, e.clientX - padOffsetX));
+      const newY = Math.max(10, Math.min(window.innerHeight - screenpad.offsetHeight - 10, e.clientY - padOffsetY));
+      screenpad.style.left = `${newX}px`;
+      screenpad.style.top = `${newY}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDraggingPad = false;
+    });
+
+    // Global ESC key listener
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (screenpad.classList.contains('visible')) {
+          screenpad.classList.remove('visible');
+          ipcRenderer.invoke('agent:close-screenpad');
+        }
+        if (boxLayer && boxLayer.children.length > 0) {
+          boxLayer.innerHTML = '';
+          ipcRenderer.invoke('agent:clear-boxes');
+        }
+      }
+    });
+
     ipcRenderer.on('overlay:screenpad-show', (_e, data) => {
-      document.getElementById('sp-title-text').textContent = data.title || 'Suggestion';
-      document.getElementById('sp-content').textContent    = data.content || '';
+      document.getElementById('sp-title-text').textContent = data.title || 'Guidance & Steps';
       padContent               = data.content || '';
       padRequiresConfirmation  = !!data.requiresConfirmation;
+
+      const contentEl = document.getElementById('sp-content');
+      contentEl.innerHTML = renderMarkdown(padContent);
 
       const confirmBtn = document.getElementById('sp-confirm');
       if (padRequiresConfirmation) {
@@ -783,13 +985,11 @@
     });
 
     document.getElementById('sp-copy').addEventListener('click', () => {
-      navigator.clipboard.writeText(padContent).catch(() => {
-        const el = document.getElementById('sp-content');
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        window.getSelection()?.removeAllRanges();
-        window.getSelection()?.addRange(range);
-        document.execCommand('copy');
+      navigator.clipboard.writeText(padContent).then(() => {
+        const copyBtn = document.getElementById('sp-copy');
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
       });
     });
 

@@ -18,9 +18,20 @@ function Invoke-MinimizeWindow ($params) {
 
 function Invoke-FocusWindow ($params) {
     $title = $params.title
-    $res = [NativeBridge]::FocusWindowByTitle($title)
+    $max = if ($null -ne $params.maximize) { [bool]$params.maximize } else { $true }
+    $res = [NativeBridge]::FocusWindowByTitle($title, $max)
     if ($res) {
         return @{ success = $true; message = "Brought window matching '$title' to foreground" }
+    } else {
+        return @{ success = $false; message = "Could not find window matching '$title'" }
+    }
+}
+
+function Invoke-MaximizeWindow ($params) {
+    $title = $params.title
+    $res = [NativeBridge]::MaximizeWindowByTitle($title)
+    if ($res) {
+        return @{ success = $true; message = "Maximized window matching '$title'" }
     } else {
         return @{ success = $false; message = "Could not find window matching '$title'" }
     }

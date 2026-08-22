@@ -137,6 +137,25 @@ class AdkRunner:
         executed_steps: list[dict[str, Any]] = []
         whiteboard_data: Optional[dict[str, Any]] = None
 
+        # Pre-seed session state with task_id
+        try:
+            sess = await self._session_service.get_session(
+                app_name=self._app.name,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            if not sess:
+                await self._session_service.create_session(
+                    app_name=self._app.name,
+                    user_id=user_id,
+                    session_id=session_id,
+                    state={"task_id": session_id},
+                )
+            elif hasattr(sess, "state") and sess.state is not None:
+                sess.state["task_id"] = session_id
+        except Exception as e:
+            logger.debug(f"Pre-session state initialization: {e}")
+
         # Notify frontend of task start
         await electron_bridge.broadcast({
             "type": "TASK_START",
@@ -240,11 +259,28 @@ class AdkRunner:
                 session_id=session_id,
             )
 
+            extra_sub_steps = []
+            try:
+                session = await self._session_service.get_session(
+                    app_name=self._app.name,
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+                if session and getattr(session, "state", None):
+                    extra_sub_steps = session.state.get("sub_agent_steps") or []
+            except Exception as e:
+                logger.warning(f"Could not retrieve session state for {session_id}: {e}")
+
+            combined_steps = list(executed_steps)
+            for sub_s in extra_sub_steps:
+                if not any(es.get("id") == sub_s.get("id") and sub_s.get("id") for es in combined_steps):
+                    combined_steps.append(sub_s)
+
             return {
                 "success": True,
                 "message": final_msg,
                 "taskId": session_id,
-                "steps": executed_steps,
+                "steps": combined_steps,
                 "whiteboardData": whiteboard_data,
                 "hadWhiteboard": bool(whiteboard_data),
                 "events": events,

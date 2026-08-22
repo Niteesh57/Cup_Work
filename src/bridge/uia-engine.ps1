@@ -111,6 +111,7 @@ function Execute-Command ($cmdObj) {
         "MINIMIZE_ALL"      { return Invoke-MinimizeAll }
         "MINIMIZE_WINDOW"   { return Invoke-MinimizeWindow -params $params }
         "FOCUS_WINDOW"      { return Invoke-FocusWindow -params $params }
+        "MAXIMIZE_WINDOW"   { return Invoke-MaximizeWindow -params $params }
         "LAUNCH_APP"        { return Invoke-LaunchApp -params $params }
         "GET_WINDOWS"       { return Invoke-GetWindows }
         "GET_ACTIVE_WINDOW" { return Invoke-GetActiveWindow }

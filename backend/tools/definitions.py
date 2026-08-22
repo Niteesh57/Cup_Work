@@ -40,14 +40,32 @@ DESKTOP_FUNCTION_DECLARATIONS = [
         )
     ),
     types.FunctionDeclaration(
+        name="maximize_window",
+        description="Maximizes a specific application window to full screen by title (e.g. Word, Chrome, Notepad) to ensure all UI elements and documents have maximum screen real estate.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "windowTitle": types.Schema(
+                    type=types.Type.STRING,
+                    description="Title or partial title of the window to maximize"
+                )
+            },
+            required=["windowTitle"]
+        )
+    ),
+    types.FunctionDeclaration(
         name="focus_window",
-        description="Brings a specific application window to the foreground.",
+        description="Brings a specific application window to the foreground and optionally maximizes it to full screen.",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
                 "windowTitle": types.Schema(
                     type=types.Type.STRING,
                     description="Title or partial title of the window to bring to front"
+                ),
+                "maximize": types.Schema(
+                    type=types.Type.BOOLEAN,
+                    description="Whether to maximize the window to full screen upon focus (default: True)"
                 )
             },
             required=["windowTitle"]
@@ -307,7 +325,7 @@ DESKTOP_FUNCTION_DECLARATIONS = [
     ),
     types.FunctionDeclaration(
         name="execute_command",
-        description="Runs a shell command and returns stdout, stderr, and exit code. Non-allowlisted commands require user confirmation.",
+        description="Runs a system shell command (e.g. git, npm, dir, ipconfig). STRICT RULE: NEVER use execute_command or python scripts (e.g. win32com, powershell scripts) to create, format, or manipulate MS Word, PowerPoint, Excel, or desktop applications behind the scenes. You must interact with apps visibly on screen using launch_app, focus_window, keyboard_type, press_hotkey, and mouse_click.",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
@@ -514,6 +532,7 @@ DESKTOP_FUNCTION_DECLARATIONS = [
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
+                "name": types.Schema(type=types.Type.STRING, description="Accessible name or label of the target UI element"),
                 "elementName": types.Schema(type=types.Type.STRING, description="Accessible name of the target"),
                 "automationId": types.Schema(type=types.Type.STRING, description="Stable AutomationId if known"),
                 "controlType": types.Schema(type=types.Type.STRING, description="UIA control type hint"),
@@ -749,18 +768,6 @@ DESKTOP_FUNCTION_DECLARATIONS = [
                 )
             },
             required=["delta"]
-        )
-    ),
-    types.FunctionDeclaration(
-        name="uia_scroll_into_view",
-        description="Scrolls a target UI element or list item into view in Windows applications.",
-        parameters=types.Schema(
-            type=types.Type.OBJECT,
-            properties={
-                "name": types.Schema(type=types.Type.STRING, description="Accessible name of the UI element"),
-                "controlType": types.Schema(type=types.Type.STRING, description="Optional UIA control type"),
-                "windowTitle": types.Schema(type=types.Type.STRING, description="Optional window title filter")
-            }
         )
     ),
     types.FunctionDeclaration(

@@ -38,49 +38,39 @@ class AgentState(str, Enum):
     FAILED = "failed"
 
 
-EXECUTOR_SYSTEM_INSTRUCTION = """You are Cup Work's Main Desktop Executor, an autonomous Windows automation agent.
+EXECUTOR_SYSTEM_INSTRUCTION = """You are Cup Work's Main Desktop Executor, an autonomous multi-modal visual Windows automation agent.
 
-Your goal is to execute the user's task on Windows end-to-end:
-1. Analyze the user goal and the provided screen observation (screenshot, open windows, interactive UI elements).
-2. Before taking action, announce your next step in one concise sentence (read aloud to user).
-3. Execute the appropriate desktop tools (e.g. smart_ui_action, uia_invoke, uia_set_value, keyboard_type, press_hotkey, scroll, launch_app, browser tools).
-4. Verify if the task is complete. If finished, reply with a short confirmation message and stop calling tools.
+CORE EXECUTION PARADIGM: OBSERVE → ACT → MID-FLIGHT VERIFY → REDO/CONTINUE → SCROLL/EXPLORE
 
-KEYBOARD-FIRST & DOCUMENT CREATION DIRECTIVES (Word, PowerPoint, Excel, Docs, Code Editors):
-- ALWAYS prefer keyboard shortcuts and commands over mouse clicking when authoring, editing, navigating, or formatting documents and presentations. Use the mouse ONLY for freeform canvas selections, drawing bounding boxes, or dragging.
-- PowerPoint Keyboard Shortcuts:
-  * Insert New Slide: `press_hotkey(modifier="CTRL", key="m")`
-  * Duplicate Slide or Object: `press_hotkey(modifier="CTRL", key="d")`
-  * Navigate Slides: `press_hotkey(modifier="NONE", key="pagedown")` / `pageup`
-  * Cycle shapes & placeholders on slide: `press_hotkey(modifier="NONE", key="tab")` / `shift+tab`
-  * Edit text in selected placeholder/shape: `press_hotkey(modifier="NONE", key="enter")` or `f2`
-  * Exit text editing back to shape container: `press_hotkey(modifier="NONE", key="escape")`
-  * Access Ribbon tabs: `Alt + H` (Home / Layouts / Font / Shapes), `Alt + N` (Insert pictures / tables / text boxes), `Alt + G` (Design / Themes)
-  * Start Presentation: `F5` / `Shift + F5`
-- Word & Document Keyboard Shortcuts:
-  * New: `Ctrl + N`, Open: `Ctrl + O`, Save: `Ctrl + S`, Close: `Ctrl + W`
-  * Bold: `Ctrl + B`, Italic: `Ctrl + I`, Underline: `Ctrl + U`
-  * Align: `Ctrl + E` (Center), `Ctrl + L` (Left), `Ctrl + R` (Right), `Ctrl + J` (Justify)
-  * Headings: `Ctrl + Alt + 1` (H1), `Ctrl + Alt + 2` (H2), `Ctrl + Alt + 3` (H3)
-  * Increase/Decrease Font Size: `Ctrl + Shift + >` / `Ctrl + Shift + <`
-  * Page Break: `Ctrl + Enter`
-  * Ribbon tabs: `Alt + H` (Home), `Alt + N` (Insert table / picture / symbols), `Alt + P` (Layout)
-- General Productivity & Browser Shortcuts:
-  * Address bar: `Ctrl + L`, New Tab: `Ctrl + T`, Close Tab: `Ctrl + W`
-  * Select All: `Ctrl + A`, Copy: `Ctrl + C`, Paste: `Ctrl + V`, Cut: `Ctrl + X`, Undo: `Ctrl + Z`, Redo: `Ctrl + Y`
+1. WINDOW SIZING & FULL-SCREEN FOCUS (CRITICAL FOR ACCURATE CLICKS):
+   - When starting work on an application (e.g. MS Word, Excel, PowerPoint, Chrome, Notepad):
+     * ALWAYS ensure the window is focused and MAXIMIZED using `focus_window(windowTitle="Word", maximize=True)` or `maximize_window("Word")`.
+     * Maximizing the application window ensures it fills the entire display, expands toolbars/ribbons, prevents background IDE/desktop windows from intercepting clicks, and keeps coordinate and UI tree boundaries stable and accurate.
 
-SCROLLING & LARGE DATA TRAVERSAL DIRECTIVES:
-- When interacting with web search results, tables, long documents, feeds, or large data:
-  * Use the `scroll` tool with negative delta (e.g. `delta: -5` or `delta: -10`) to scroll DOWN through pages, lists, and tables.
-  * Use `scroll` with positive delta (e.g. `delta: 5`) to scroll UP.
-  * You can also use `press_hotkey(modifier="NONE", key="pagedown")` or `uia_scroll_into_view` to bring unseen content into view.
-  * Never assume the initial viewport shows all data—scroll to inspect, collect, or act on full datasets.
+2. FULL TOOL FLEXIBILITY & MULTI-ACTION CHAINING (REDUCE STEPS):
+   - You have complete flexibility across UI Automation (UIA), Mouse, Keyboard, and Window controls:
+     * UI Automation (UIA) Tree: Use `uia_get_interactive_elements`, `uia_search_elements`, `uia_click`, `uia_set_value` to reliably inspect and click ribbon tabs, buttons, styles, and menus by accessible name (e.g. `uia_click("Center")`, `uia_click("Bold")`, `uia_click("Heading 1")`).
+     * Direct Mouse & Drag: Use `mouse_click(x, y)`, `mouse_move(x, y)`, `drag_drop` to position cursor, select text, or click exact screen points.
+     * Keyboard Shortcuts & Typing: Use `press_hotkey` (e.g. `Ctrl+N` new, `Ctrl+A` select all, `Ctrl+B` bold, `Ctrl+E` center, `Ctrl+L` left, `Ctrl+Alt+1` H1), `keyboard_type` for text, `keyboard_key` (e.g. `Home`, `End`, `Return`, `PageDown`).
+     * Multi-Action Chaining: You CAN call multiple complementary tools in a single turn (e.g., `focus_window` + `press_hotkey` or `mouse_click` + `keyboard_type` + `press_hotkey`) to execute decisive flows rapidly without wasting turns on microscopic single keypresses!
 
-Rules:
-- Prefer semantic UI Automation tools (smart_ui_action, uia_invoke, uia_set_value), keyboard shortcuts, and browser tools over blind mouse clicking.
-- If an application is already open, reuse its window.
-- Use `ask_human` if you require human confirmation, sensitive decisions, or credentials.
-- When done, return a clear summary message."""
+3. CONTINUOUS MID-FLIGHT VERIFICATION & SELF-CORRECTION:
+   - Verify your progress after each sub-goal using the fresh post-action screenshot automatically provided.
+   - If a visual sub-goal was achieved (e.g. text is formatted, dialog opened): proceed confidently to the next step.
+   - If not verified: diagnose (e.g. window unfocused, text unselected) and immediately REDO the action with an alternate approach (e.g. `focus_window(Word, maximize=True)`, re-select text, or click via `uia_click`) until confirmed.
+
+4. SCROLL, SEARCH, ACT & VERIFY PATTERN (FOR MULTI-SECTION WORK):
+   - For long documents, web pages, or lists:
+     * Process visible items in the current view and verify them.
+     * Scroll down with `scroll(delta=-5)` (or `delta=-8` / `PageDown`).
+     * Inspect the new viewport in the next turn, process newly visible sections, and verify.
+     * Continue until the entire document/page is traversed.
+
+5. STRICT PROHIBITION:
+   - NEVER run background Python scripts or hidden COM commands to bypass visual UI. The user wants to see the visual agent interactively control the application live on screen!
+
+6. COMPLETION & SUMMARY:
+   - Once all sections/items have been processed, scrolled through, and visually verified on screen, return a clear, comprehensive summary message of what was accomplished."""
 
 OBSERVATION_TOOLS = {
     "take_screenshot",
@@ -187,8 +177,8 @@ class MainExecutorAgent:
 
     def __init__(self, model_name: Optional[str] = None) -> None:
         self._model_name = model_name or config.DEFAULT_MODEL
-        self._max_actions = 25
-        self._max_llm_calls = 35
+        self._max_actions = 80
+        self._max_llm_calls = 90
         self._user_locks: Dict[str, asyncio.Lock] = {}
 
     async def execute_prompt(
@@ -312,11 +302,9 @@ class MainExecutorAgent:
                 await self._set_state(task_id, AgentState.PLANNING)
                 await event_bus.publish(EventType.THINKING, {"taskId": task_id})
 
-                # Ensure conversation history does not end with model role before calling generate_content
-                while len(contents) > 1 and contents[-1].role == "model":
-                    contents.pop()
-                if contents and contents[-1].role == "model":
-                    contents.append(types.Content(role="user", parts=[types.Part.from_text(text="Continue executing task.")]))
+                # Ensure conversation history ends with a user turn before calling generate_content
+                if contents and str(getattr(contents[-1], "role", "")).lower() == "model":
+                    contents.append(types.Content(role="user", parts=[types.Part.from_text(text="Proceed with the next step.")]))
 
                 def _call_model():
                     return client.models.generate_content(
@@ -376,8 +364,6 @@ class MainExecutorAgent:
                         if func_name not in OBSERVATION_TOOLS:
                             actions += 1
 
-                    steps.append(step_result)
-
                     # Sanitize function response to avoid putting huge base64 strings in JSON text
                     raw_res = step_result.get("result")
                     clean_res = raw_res
@@ -393,20 +379,24 @@ class MainExecutorAgent:
                                 except Exception:
                                     pass
 
+                    step_dict = {
+                        "id": f"step-{uuid.uuid4().hex[:6]}",
+                        "agentName": "main_executor",
+                        "actionName": func_name,
+                        "thought": narrative or f"Desktop Executor running {func_name}",
+                        "parameters": func_args,
+                        "result": clean_res,
+                        "success": step_result.get("success", True),
+                        "durationMs": step_result.get("durationMs", 0),
+                        "timestamp": time.strftime("%H:%M:%S"),
+                    }
+                    steps.append(step_dict)
+
                     await electron_bridge.broadcast({
                         "type": "AGENT_STEP_UPDATE",
                         "taskId": task_id,
-                        "step": {
-                            "id": f"step-{uuid.uuid4().hex[:6]}",
-                            "agentName": "main_executor",
-                            "actionName": func_name,
-                            "thought": narrative or f"Desktop Executor running {func_name}",
-                            "parameters": func_args,
-                            "result": clean_res,
-                            "success": step_result.get("success", True),
-                            "durationMs": step_result.get("durationMs", 0),
-                            "timestamp": time.strftime("%H:%M:%S"),
-                        },
+                        "step": step_dict,
+                        "activeAgent": "main_executor",
                     })
 
                     # Gemini API strictly requires role='tool' parts to ONLY be FunctionResponse
@@ -421,28 +411,60 @@ class MainExecutorAgent:
                         ))
 
                 if tool_response_parts:
-                    contents.append(types.Content(role="tool", parts=tool_response_parts))
+                    contents.append(types.Content(role="user", parts=tool_response_parts))
+
+                # Auto-capture fresh post-action screenshot so the agent can immediately verify the outcome of its actions
+                if not observation_image_parts:
+                    try:
+                        post_b64 = await self._screenshot(task_id)
+                        if post_b64:
+                            post_bytes = base64.b64decode(post_b64)
+                            observation_image_parts.append(types.Part.from_bytes(
+                                data=post_bytes,
+                                mime_type="image/png",
+                            ))
+                    except Exception as e:
+                        logger.warning(f"Auto post-action screenshot capture failed: {e}")
 
                 if observation_image_parts:
                     contents.append(types.Content(
                         role="user",
-                        parts=[types.Part.from_text(text="[Current Screenshot observation]")] + observation_image_parts,
+                        parts=[types.Part.from_text(text="[Current Screenshot observation after executing step — inspect carefully to verify if sub-goal was achieved or if retry/redo is needed]")] + observation_image_parts,
                     ))
 
                 # Prune older inline image parts in conversation history if more than 3 screenshots exist
-                all_image_parts = []
+                total_imgs = 0
                 for c in contents:
                     if c.parts:
                         for p in c.parts:
                             if getattr(p, "inline_data", None) is not None:
-                                all_image_parts.append(p)
-                if len(all_image_parts) > 3:
-                    for old_img in all_image_parts[:-3]:
-                        old_img.inline_data = None
-                        old_img.text = "[Older screenshot pruned for token budget]"
+                                total_imgs += 1
+                if total_imgs > 3:
+                    imgs_to_prune = total_imgs - 3
+                    for c in contents:
+                        if c.parts:
+                            new_parts = []
+                            for p in c.parts:
+                                if getattr(p, "inline_data", None) is not None and imgs_to_prune > 0:
+                                    new_parts.append(types.Part.from_text(text="[Older screenshot pruned for token budget]"))
+                                    imgs_to_prune -= 1
+                                else:
+                                    new_parts.append(p)
+                            c.parts = new_parts
 
 
-            return self._finish(task_id, True, "Completed all planned steps.", steps, AgentState.COMPLETED, user_id, device_id)
+            # Final visual verification before declaring completion
+            await self._set_state(task_id, AgentState.VERIFYING)
+            screenshot = await self._screenshot(task_id)
+            verdict = await goal_verifier.check(prompt, screenshot) if screenshot else VerificationResult(True, 1.0, "")
+            
+            final_summary = "Task completed and verified on screen."
+            if verdict.passed:
+                final_summary = f"Task completed and verified on screen. {narrative}".strip()
+            elif verdict.missing:
+                final_summary = f"Completed actions. Visual state: {verdict.missing}"
+            
+            return self._finish(task_id, True, final_summary, steps, AgentState.COMPLETED, user_id, device_id)
 
         except Exception as e:
             logger.exception(f"Executor error on task {task_id}: {e}")
@@ -534,7 +556,17 @@ class MainExecutorAdkAgent(BaseAgent):
 
         prompt = "\n".join(text_parts).strip() or "Execute the requested desktop action."
         user_id = ctx.user_id or "default"
-        task_id = str(ctx.session.state.get("task_id", "")) or f"adk-{ctx.invocation_id[:8]}"
+        session_obj = getattr(ctx, "session", None)
+        task_id = str(session_obj.state.get("task_id", "") if session_obj and getattr(session_obj, "state", None) else "") or (getattr(session_obj, "id", "") if session_obj else "") or f"adk-{ctx.invocation_id[:8]}"
+
+        from backend.bridge.electron_bridge import electron_bridge
+        await electron_bridge.broadcast({
+            "type": "STATE_CHANGE",
+            "taskId": task_id,
+            "activeAgent": self.name,
+            "agentName": self.name,
+            "state": "acting",
+        })
 
         result = await main_executor_agent.execute_prompt(
             prompt=prompt,
@@ -544,6 +576,10 @@ class MainExecutorAdkAgent(BaseAgent):
             task_id=task_id,
             user_id=user_id,
         )
+
+        sub_steps = result.get("steps") or []
+        existing = ctx.session.state.get("sub_agent_steps") or []
+        ctx.session.state["sub_agent_steps"] = existing + sub_steps
 
         text = str(result.get("message") or "Task complete.")
         ctx.set_agent_state(self.name, end_of_agent=True)
