@@ -19,29 +19,29 @@
 </div>
 
 ## 🌟 Table of Contents
-- [⚡ Quick Start (2-Minute Spin-Up)](#quick-start-2-minute-spin-up)
+- [⚡ Quick Start (2-Minute Spin-Up)](#quick-start)
 - [📖 Overview](#overview)
-- [🚀 Key Pillars & Capabilities](#key-pillars--capabilities)
-- [🏗️ Full System Architecture & Agentic Execution Loop](#full-system-architecture--agentic-execution-loop)
-- [🤖 Agent Tool Capabilities & Model Execution Matrix](#agent-tool-capabilities--model-execution-matrix)
-- [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#how-gemini-models-execute-desktop-workflows-deep-dive)
+- [🚀 Key Pillars & Capabilities](#key-pillars)
+- [🏗️ Full System Architecture & Agentic Execution Loop](#architecture)
+- [🤖 Agent Tool Capabilities & Model Execution Matrix](#agent-tools)
+- [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#model-execution)
 - [📁 Project Structure](#project-structure)
-- [🛠️ Detailed Step-by-Step Spin-Up Guide](#detailed-step-by-step-spin-up-guide)
+- [🛠️ Detailed Step-by-Step Spin-Up Guide](#spin-up-guide)
   - [Prerequisites](#prerequisites)
-  - [Step 1: Get a Gemini API Key](#step-1-get-a-gemini-api-key)
-  - [Step 2: Clone the Repository & Configure Environment](#step-2-clone-the-repository--configure-environment)
-  - [Step 3: Start the Backend Server (Terminal 1)](#step-3-start-the-backend-server-terminal-1)
-  - [Step 4: Launch the Desktop Client (Terminal 2)](#step-4-launch-the-desktop-client-terminal-2)
-- [🧪 60-Second "Test Drive" / Verification Guide](#60-second-test-drive--verification-guide)
-- [⚙️ Environment Configuration Reference](#environment-configuration-reference)
-- [📡 API & WebSocket Protocol](#api--websocket-protocol)
-- [🩺 Troubleshooting & Common Gotchas](#troubleshooting--common-gotchas)
-- [🧪 Running Automated Tests](#running-automated-tests)
+  - [Step 1: Get a Gemini API Key](#step-1)
+  - [Step 2: Clone the Repository & Configure Environment](#step-2)
+  - [Step 3: Start the Backend Server (Terminal 1)](#step-3)
+  - [Step 4: Launch the Desktop Client (Terminal 2)](#step-4)
+- [🧪 60-Second "Test Drive" / Verification Guide](#test-drive)
+- [⚙️ Environment Configuration Reference](#env-config)
+- [📡 API & WebSocket Protocol](#api-protocol)
+- [🩺 Troubleshooting & Common Gotchas](#troubleshooting)
+- [🧪 Running Automated Tests](#running-tests)
 - [📄 License](#license)
 
 ---
 
-## ⚡ Quick Start (2-Minute Spin-Up)
+## <a id="quick-start"></a>⚡ Quick Start (2-Minute Spin-Up)
 
 For evaluators and judges who want to spin up Cup Work in under 2 minutes:
 
@@ -82,7 +82,7 @@ npm start
 
 ---
 
-## 📖 Overview
+## <a id="overview"></a>📖 Overview
 
 Most desktop AI assistants are confined to a static sidebar chat box. **Cup Work** breaks free from the chat window:
 - It **draws animated architectural diagrams** directly over your desktop screen with an auto-gliding camera.
@@ -93,7 +93,7 @@ Most desktop AI assistants are confined to a static sidebar chat box. **Cup Work
 
 ---
 
-## 🚀 Key Pillars & Capabilities
+## <a id="key-pillars"></a>🚀 Key Pillars & Capabilities
 
 ### 1. On-Screen Infinite Whiteboard Agent (`on_screen_agent`)
 When you ask conceptual or architectural questions (*"How does OAuth2 work?"*, *"Explain Kafka internal architecture"*, *"Teach me Kubernetes"*):
@@ -129,7 +129,7 @@ For end-to-end desktop task execution:
 
 ---
 
-## 🏗️ Full System Architecture & Agentic Execution Loop
+## <a id="architecture"></a>🏗️ Full System Architecture & Agentic Execution Loop
 
 Cup Work follows a closed-loop **Taskmaster workflow**:
 
@@ -233,7 +233,7 @@ flowchart TB
 
 ---
 
-## 🤖 Agent Tool Capabilities & Model Execution Matrix
+## <a id="agent-tools"></a>🤖 Agent Tool Capabilities & Model Execution Matrix
 
 Every agent in Cup Work is strictly domain-isolated to eliminate tool-call hallucination and ensure predictable, verified desktop actions.
 
@@ -252,7 +252,7 @@ Every agent in Cup Work is strictly domain-isolated to eliminate tool-call hallu
 
 ---
 
-## 🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)
+## <a id="model-execution"></a>🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)
 
 Cup Work bridges high-level AI reasoning with low-level Windows OS control through a 6-phase execution pipeline:
 
@@ -316,7 +316,7 @@ Throughout execution:
 
 ---
 
-## 📁 Project Structure
+## <a id="project-structure"></a>📁 Project Structure
 
 ```text
 hey_jave/
@@ -373,9 +373,9 @@ hey_jave/
 
 ---
 
-## 🛠️ Detailed Step-by-Step Spin-Up Guide
+## <a id="spin-up-guide"></a>🛠️ Detailed Step-by-Step Spin-Up Guide
 
-### Prerequisites
+### <a id="prerequisites"></a>Prerequisites
 Before running Cup Work, make sure your machine has:
 1. **Node.js**: `v20.0.0` or newer ([Download Node.js](https://nodejs.org/))
 2. **Python**: `3.11` or `3.12` ([Download Python](https://www.python.org/downloads/))
@@ -386,7 +386,7 @@ Before running Cup Work, make sure your machine has:
 
 ---
 
-### Step 1: Get a Gemini API Key
+### <a id="step-1"></a>Step 1: Get a Gemini API Key
 1. Visit **[Google AI Studio](https://aistudio.google.com/apikey)**.
 2. Sign in with your Google account and click **"Create API Key"**.
 3. Copy your key (starts with `AIzaSy...`).
@@ -395,7 +395,7 @@ Before running Cup Work, make sure your machine has:
 
 ---
 
-### Step 2: Clone the Repository & Configure Environment
+### <a id="step-2"></a>Step 2: Clone the Repository & Configure Environment
 
 ```bash
 # Clone the repository
@@ -426,7 +426,7 @@ LOG_LEVEL=info
 
 ---
 
-### Step 3: Start the Backend Server (Terminal 1)
+### <a id="step-3"></a>Step 3: Start the Backend Server (Terminal 1)
 
 Open **Terminal 1** and run:
 
@@ -482,7 +482,7 @@ Expected output: `{"status":"ok","service":"hey-jave-brain","default_model":"gem
 
 ---
 
-### Step 4: Launch the Desktop Client (Terminal 2)
+### <a id="step-4"></a>Step 4: Launch the Desktop Client (Terminal 2)
 
 Open **Terminal 2** from the root `Jave/` folder:
 
@@ -501,7 +501,7 @@ npm start
 
 ---
 
-## 🧪 60-Second "Test Drive" / Verification Guide
+## <a id="test-drive"></a>🧪 60-Second "Test Drive" / Verification Guide
 
 Once the Cup Work window opens, test these core capabilities to verify complete end-to-end functionality:
 
@@ -538,7 +538,7 @@ Type or speak:
 
 ---
 
-## ⚙️ Environment Configuration Reference
+## <a id="env-config"></a>⚙️ Environment Configuration Reference
 
 | Variable | Default | Required? | Description |
 | :--- | :--- | :---: | :--- |
@@ -555,7 +555,7 @@ Type or speak:
 
 ---
 
-## 📡 API & WebSocket Protocol
+## <a id="api-protocol"></a>📡 API & WebSocket Protocol
 
 ### REST Endpoints
 - `GET  /health`: Health status, active clients, and default model.
@@ -575,7 +575,7 @@ Type or speak:
 
 ---
 
-## 🩺 Troubleshooting & Common Gotchas
+## <a id="troubleshooting"></a>🩺 Troubleshooting & Common Gotchas
 
 ### 1. PowerShell Script Execution Policy Error
 If you see `File .venv\Scripts\Activate.ps1 cannot be loaded because running scripts is disabled`:
@@ -600,7 +600,7 @@ The screen overlay runs as a transparent, frameless window spanning your primary
 
 ---
 
-## 🧪 Running Automated Tests
+## <a id="running-tests"></a>🧪 Running Automated Tests
 
 Run backend tests to verify agent routing, memory management, and API endpoints:
 
@@ -611,7 +611,7 @@ python -m pytest test_backend.py test_routes.py -v
 
 ---
 
-## 📄 License
+## <a id="license"></a>📄 License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
