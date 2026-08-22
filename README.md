@@ -23,6 +23,8 @@
 - [📖 Overview](#-overview)
 - [🚀 Key Pillars & Capabilities](#-key-pillars--capabilities)
 - [🏗️ Full System Architecture & Agentic Execution Loop](#-full-system-architecture--agentic-execution-loop)
+- [🤖 Agent Tool Capabilities & Model Execution Matrix](#-agent-tool-capabilities--model-execution-matrix)
+- [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#-how-gemini-models-execute-desktop-workflows-deep-dive)
 - [📁 Project Structure](#-project-structure)
 - [🛠️ Detailed Step-by-Step Spin-Up Guide](#-detailed-step-by-step-spin-up-guide)
   - [Prerequisites](#prerequisites)
@@ -34,8 +36,6 @@
 - [⚙️ Environment Configuration Reference](#-environment-configuration-reference)
 - [📡 API & WebSocket Protocol](#-api--websocket-protocol)
 - [🩺 Troubleshooting & Common Gotchas](#-troubleshooting--common-gotchas)
-- [🤖 Agent Tool Capabilities & Model Execution Matrix](#-agent-tool-capabilities--model-execution-matrix)
-- [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#-how-gemini-models-execute-desktop-workflows-deep-dive)
 - [🧪 Running Automated Tests](#-running-automated-tests)
 - [📄 License](#-license)
 
@@ -145,7 +145,7 @@ flowchart TB
     end
 
     subgraph BackendBrain ["Cup Work Python Brain (FastAPI + Google ADK)"]
-        WSServer["WebSocket Relay & REST Endpoints<br><i>Port 8765 (/ws, /api/agent)</i>"]
+        WSServer["WebSocket Relay & REST Endpoints<br><i>Port 8765 - /ws, /api/agent</i>"]
         EventStream["Internal Event Bus & State Machine<br><i>Real-time Agent Commentary & Logs</i>"]
         MemoryGraph["Temporal Memory & SQLite Store<br><i>Active Preferences, Todos, Device Identities</i>"]
         
@@ -163,23 +163,24 @@ flowchart TB
 
             subgraph ActionVerificationMesh ["Closed-Loop Action & Verification Engine"]
                 Executor["<b>Main Desktop Executor</b><br><i>gemini-3.7-flash</i><br>Keyboard, Mouse, Window Automation"]
-                HITLGate{"<b>HITL Safety Gate</b><br><i>Risk Assessment</i><br>High-Risk / Mutating Action?"}
+                HITLGate{"<b>HITL Safety Gate</b><br><i>Risk Assessment</i><br>High-Risk Action?"}
                 ApprovalCard["Interactive Approval Card<br><i>Spoken / Click Confirmation</i>"]
-                GoalVerifier["<b>Goal Verifier</b><br><i>gemini-3.7-flash-vision</i><br>Post-Action Differential Screen Inspection"]
+                GoalVerifier["<b>Goal Verifier</b><br><i>gemini-3.7-flash-vision</i><br>Post-Action Screen Inspection"]
             end
         end
     end
 
     subgraph GeminiModels ["Google Cloud & Gemini Model Ensemble"]
-        G_Flash["Gemini 3.7 Flash<br><i>Core Reasoning, Multi-Turn Planning & Tool Calling</i>"]
-        G_Vision["Gemini 3.7 Flash Vision<br><i>Multimodal Screen Understanding & Normalized Grid OCR</i>"]
-        G_TTS["Gemini Flash TTS Preview<br><i>Expressive Voice Synthesis with Inline Emotion Tags</i>"]
-        G_Live["Gemini 2.5 Flash Live<br><i>Bidirectional Real-Time Audio Dialog & Barge-In</i>"]
+        G_Flash["Gemini 3.7 Flash<br><i>Reasoning, Planning & Tool Calling</i>"]
+        G_Vision["Gemini 3.7 Flash Vision<br><i>Screen Understanding & Grid OCR</i>"]
+        G_TTS["Gemini Flash TTS Preview<br><i>Voice Synthesis with Emotion Tags</i>"]
+        G_Live["Gemini 2.5 Flash Live<br><i>Real-Time Audio Dialog & Barge-In</i>"]
     end
 
-    UserGoal --> AudioEngine & ElectronIPC
+    UserGoal --> AudioEngine
+    UserGoal --> ElectronIPC
     AudioEngine --> WSServer
-    ElectronIPC <-->|Bi-directional WebSocket (Port 8765)| WSServer
+    ElectronIPC <-->|WebSocket Port 8765| WSServer
     
     WSServer --> RootAgent
     RootAgent <--> MemoryGraph
@@ -193,19 +194,103 @@ flowchart TB
     Planner -->|Bounding Boxes & Arrows| OverlayWin
     
     Executor --> HITLGate
-    HITLGate -- Yes (Destructive/Shell) --> ApprovalCard
-    ApprovalCard -- User Approves --> UIAManager
-    HITLGate -- No (Safe/Read-only) --> UIAManager
+    HITLGate -->|Yes: Destructive or Shell| ApprovalCard
+    ApprovalCard -->|User Approves| UIAManager
+    HITLGate -->|No: Safe or Read-only| UIAManager
     
-    UIAManager -->|Execute Win32 / UIA / Mouse / Keys| ElectronIPC
-    ElectronIPC -->|Post-Action Screenshot & UI Tree| GoalVerifier
+    UIAManager -->|Execute Win32 / UIA / Keys| ElectronIPC
+    ElectronIPC -->|Post-Action Screenshot| GoalVerifier
     GoalVerifier <--> G_Vision
     
-    GoalVerifier -->|Visual State Changed & Sub-Goal Met| Executor
-    GoalVerifier -->|Zero State Change / Error Detected| Planner
+    GoalVerifier -->|Visual State Changed| Executor
+    GoalVerifier -->|Zero State Change / Error| Planner
     
     EventStream -->|TTS Stream Chunks| AudioEngine
     AudioEngine <--> G_TTS
+```
+
+---
+
+## 🤖 Agent Tool Capabilities & Model Execution Matrix
+
+Every agent in Cup Work is strictly domain-isolated to eliminate tool-call hallucination and ensure predictable, verified desktop actions.
+
+| Agent Name | Assigned Gemini Model | Available Tools & Signatures | Domain & Execution Capability |
+| :--- | :--- | :--- | :--- |
+| **`root_agent`** | **Gemini 3.7 Flash** | • `take_screenshot_tool()`<br>• `set_user_preference_tool(key, value, status, category, device_id)`<br>• `expire_user_preference_tool(key, category)`<br>• `get_user_preferences_tool(status, category)`<br>• `create_todo_task_tool(title, description, priority, due_date, tags)`<br>• `update_todo_task_tool(task_id, status, priority, title, description)`<br>• `list_todo_tasks_tool(status, priority)`<br>• `log_activity_event_tool(activity_type, title, content, importance)` | **Top-Level Orchestrator & Memory Core**<br>Decomposes user goals into actionable sub-tasks, manages temporal preference graph in SQLite, maintains live todo list, and transfers control dynamically via ADK `transfer_to_agent`. |
+| **`main_executor`** | **Gemini 3.7 Flash** | • `focus_window(windowTitle, maximize)`<br>• `maximize_window(windowTitle)`<br>• `mouse_click(x, y, button, clickCount)`<br>• `mouse_move(x, y)`<br>• `drag_drop(startX, startY, endX, endY)`<br>• `keyboard_type(text, cpm)`<br>• `press_hotkey(hotkey)`<br>• `keyboard_key(key)`<br>• `scroll_tool(delta, x, y)`<br>• `uia_click(name, controlType, automationId)`<br>• `uia_set_value(name, value, controlType)`<br>• `uia_scroll_into_view(name, controlType, windowTitle)`<br>• `run_command(command, cwd)` | **Autonomous Windows Automation Engine**<br>Executes native desktop automation using keyboard-first shortcuts and mouse control. Supports multi-action chaining in a single turn to complete complex workflows rapidly without single-keypress latency. |
+| **`goal_verifier`** | **Gemini 3.7 Flash Vision** | • `verify_subgoal(expected_state, post_screenshot_b64, active_window_meta)`<br>• `inspect_differential_screen(pre_b64, post_b64)` | **Closed-Loop Visual Inspector**<br>Compares before-and-after screenshots and inspects the active OS accessibility tree to visually verify whether a sub-goal was achieved. Triggers replanning if state didn't change. |
+| **`hitl_manager`** | **Gemini 3.7 Flash** | • `ask_human_tool(question, options)`<br>• `request_execution_approval(action_type, command, target_resource)` | **Zero-Trust Safety & Approval Gate**<br>Evaluates command risk level. Intercepts destructive actions (file deletion, process termination, shell scripts, config changes) and presents interactive on-screen approval cards. |
+| **`on_screen_agent`** | **Gemini 3.7 Flash** | • `draw_whiteboard_lecture_tool(concept_title, steps, step_delay_seconds)`<br>• `draw_whiteboard_step_tool(concept_title, step_number, total_steps, step_label, elements, connections, notes, narration, append_mode)`<br>• `draw_mermaid_diagram_tool(concept_title, nodes, connections, notes, narration)`<br>• `add_whiteboard_clarification_tool(topic, text, target_id, narration)`<br>• `clear_whiteboard_tool()`<br>• `close_whiteboard_tool()` | **On-Screen Whiteboard Tutor**<br>Precompiles multi-step SVG sketch lectures with database cylinders, server boxes, cloud nodes, and curved animated arrows. Controls auto-gliding virtual camera and anchors in-flight doubt cards. |
+| **`strange_planner`** | **Gemini 3.7 Flash Vision** | • `show_annotations_tool(boxes, arrows, duration_seconds)`<br>• `show_screenpad_tool(title, content, content_type, message)`<br>• `uia_get_interactive_elements_tool(window_title, max_elements)`<br>• `uia_search_elements_tool(query, window_title)` | **Visual Screen Guidance & Chess Planner**<br>Pins highlight bounding boxes `[ymin, xmin, ymax, xmax]` and directional pointer arrows over desktop UI controls. Calculates chess board grid coordinates (A1–H8) for visual move guidance. |
+| **`research_agent`** | **Gemini 3.7 Flash** | • Google Search Grounding Tools<br>• `fetch_web_documentation(url, query)` | **Technical Research Specialist**<br>Synthesizes documentation, API specs, and error solutions from live web searches and returns structured summaries without polluting desktop tools. |
+| **`clarification_agent`** | **Gemini 3.7 Flash** | • `ask_human_tool(question, options)`<br>• `render_quiz_card(question_id, prompt, choices)` | **Interactive Q&A & Quiz Master**<br>Conducts turn-by-turn interactive trivia, multi-step user disambiguation, and parameter gathering one question at a time. |
+| **`scratchpad_agent`** | **Gemini 3.7 Flash** | • `show_screenpad_tool(title, content, content_type, message)` | **Code Proposal & Command Card Engine**<br>Displays formatted terminal commands, diff blocks, and code snippets in a persistent on-screen card for quick copy-paste and review. |
+| **`general_agent`** | **Gemini 3.7 Flash + TTS** | • `search_and_explore_places_tool(query, location_hint)`<br>• `read_grounded_news_tool(topic, count)`<br>• `create_todo_task_tool(title, description, priority, due_date, tags)`<br>• `list_todo_tasks_tool(status, priority)` | **Companion & Places Explorer**<br>Handles natural conversation, weather/news broadcasts, Google Maps place exploration, and daily productivity management with expressive emotion audio tags. |
+
+---
+
+## 🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)
+
+Cup Work bridges high-level AI reasoning with low-level Windows OS control through a 6-phase execution pipeline:
+
+```
+[ Phase 1: User Goal & Context Injection ]
+                      │
+[ Phase 2: Dual-Tier Perception (UIA + Gemini Vision) ]
+                      │
+[ Phase 3: Zero-Trust Safety Gate (HITL) ]
+                      │
+[ Phase 4: WebSocket JSON-RPC Multi-Action Execution ]
+                      │
+[ Phase 5: Closed-Loop Visual Verification (Goal Verifier) ]
+                      │
+[ Phase 6: Real-Time Multimodal Voice & Overlay Streaming ]
+```
+
+### Phase 1: Dynamic Intent Routing & Context Injection
+1. User provides a goal via voice (Web Speech API / Gemini Live) or text.
+2. The `root_agent` receives the prompt along with an **injected context block** containing:
+   - **Active Preferences:** Filtered from SQLite (e.g., `package_manager: pnpm`, `editor: VS Code`).
+   - **Active Todos:** Unfinished tasks for the day.
+   - **Hardware ID:** Device context (`desktop-main`).
+3. `root_agent` calls Google ADK's `transfer_to_agent("main_executor")` or the relevant specialist.
+
+### Phase 2: Dual-Tier Perception Engine (Speed + Robustness)
+When an agent needs to locate an on-screen button or inspect terminal text:
+* **Tier 1 (Sub-15ms UIA Query):** The agent calls `uia_get_interactive_elements_tool()` or `uia_search_elements_tool()`. The Python backend sends a WebSocket request to Electron's native Windows UI Automation bridge, returning bounding rectangles, control types (`Button`, `Edit`, `MenuItem`), and accessibility IDs.
+* **Tier 2 (Gemini Vision Grounding Fallback):** If an application is rendered on a custom HTML5 canvas, OpenGL viewport, or game engine, UIA returns empty nodes. The system automatically captures a PNG screenshot, encodes it to base64, and prompts **Gemini 3.7 Flash Vision** with a normalized coordinate system ($0\text{--}1000$). Gemini returns exact spatial bounding boxes mapped back to physical display pixels.
+
+### Phase 3: Zero-Trust Human-In-The-Loop (HITL) Safety Gate
+Before any command reaches the operating system:
+1. `main_executor` passes the proposed action through `hitl_manager`.
+2. Actions categorized as **read-only / safe** (e.g., `focus_window`, `take_screenshot`, `scroll`, `uia_get_text`) execute immediately without user interruption.
+3. Actions categorized as **high-risk or mutating** (e.g., running shell commands, terminating processes, modifying system files, clicking checkout buttons) trigger `ask_human_tool`.
+4. An interactive glassmorphism card appears on screen with options. The agent halts execution until the user gives explicit voice or click approval.
+
+### Phase 4: Multi-Action Chained Execution over WebSocket JSON-RPC
+To eliminate sluggish single-keypress turn delays:
+* The model can chain complementary tool invocations in a single response turn:
+  ```json
+  [
+    {"name": "focus_window", "args": {"windowTitle": "PowerShell", "maximize": true}},
+    {"name": "keyboard_type", "args": {"text": "npm run test:unit"}},
+    {"name": "press_hotkey", "args": {"hotkey": "Return"}}
+  ]
+  ```
+* The Python backend dispatches these tools over WebSocket (`ws://127.0.0.1:8765/ws`) to Electron, which executes them sequentially via native Windows `SendInput` APIs and Win32 window handles.
+
+### Phase 5: Mid-Flight Goal Verification & Self-Correction
+After executing the action chain:
+1. Electron captures an instant post-action screenshot.
+2. `goal_verifier` calls **Gemini 3.7 Flash Vision** to compare the screen state against the expected sub-goal.
+3. **If Verified:** The executor marks the step complete and proceeds to the next planned phase.
+4. **If Not Verified (State unchanged or error dialog detected):** The agent does NOT enter a blind loop. It diagnoses why the action failed (e.g., window lost focus, button disabled), updates its plan, and tries an alternative path (e.g., keyboard hotkey instead of mouse click).
+
+### Phase 6: Real-Time Multimodal Voice & Overlay Streaming
+Throughout execution:
+* **Audio Synthesis:** Spoken responses are generated via **Gemini Flash TTS** using inline emotion tags (`[excitedly]`, `[thoughtful]`, `[serious]`) and streamed as raw 24kHz PCM chunks directly to the Web Audio buffer.
+* **On-Screen Canvas:** Whiteboard diagrams and highlight boxes render live on the transparent click-through Electron overlay without taking focus away from the user's active work.
 
 ---
 
@@ -493,89 +578,6 @@ The screen overlay runs as a transparent, frameless window spanning your primary
 
 ---
 
-## 🤖 Agent Tool Capabilities & Model Execution Matrix
-
-Every agent in Cup Work is strictly domain-isolated to eliminate tool-call hallucination and ensure predictable, verified desktop actions.
-
-| Agent Name | Assigned Gemini Model | Available Tools & Signatures | Domain & Execution Capability |
-| :--- | :--- | :--- | :--- |
-| **`root_agent`** | **Gemini 3.7 Flash** | • `take_screenshot_tool()`<br>• `set_user_preference_tool(key, value, status, category, device_id)`<br>• `expire_user_preference_tool(key, category)`<br>• `get_user_preferences_tool(status, category)`<br>• `create_todo_task_tool(title, description, priority, due_date, tags)`<br>• `update_todo_task_tool(task_id, status, priority, title, description)`<br>• `list_todo_tasks_tool(status, priority)`<br>• `log_activity_event_tool(activity_type, title, content, importance)` | **Top-Level Orchestrator & Memory Core**<br>Decomposes user goals into actionable sub-tasks, manages temporal preference graph in SQLite, maintains live todo list, and transfers control dynamically via ADK `transfer_to_agent`. |
-| **`main_executor`** | **Gemini 3.7 Flash** | • `focus_window(windowTitle, maximize)`<br>• `maximize_window(windowTitle)`<br>• `mouse_click(x, y, button, clickCount)`<br>• `mouse_move(x, y)`<br>• `drag_drop(startX, startY, endX, endY)`<br>• `keyboard_type(text, cpm)`<br>• `press_hotkey(hotkey)`<br>• `keyboard_key(key)`<br>• `scroll_tool(delta, x, y)`<br>• `uia_click(name, controlType, automationId)`<br>• `uia_set_value(name, value, controlType)`<br>• `uia_scroll_into_view(name, controlType, windowTitle)`<br>• `run_command(command, cwd)` | **Autonomous Windows Automation Engine**<br>Executes native desktop automation using keyboard-first shortcuts and mouse control. Supports multi-action chaining in a single turn to complete complex workflows rapidly without single-keypress latency. |
-| **`goal_verifier`** | **Gemini 3.7 Flash Vision** | • `verify_subgoal(expected_state, post_screenshot_b64, active_window_meta)`<br>• `inspect_differential_screen(pre_b64, post_b64)` | **Closed-Loop Visual Inspector**<br>Compares before-and-after screenshots and inspects the active OS accessibility tree to visually verify whether a sub-goal was achieved. Triggers replanning if state didn't change. |
-| **`hitl_manager`** | **Gemini 3.7 Flash** | • `ask_human_tool(question, options)`<br>• `request_execution_approval(action_type, command, target_resource)` | **Zero-Trust Safety & Approval Gate**<br>Evaluates command risk level. Intercepts destructive actions (file deletion, process termination, shell scripts, config changes) and presents interactive on-screen approval cards. |
-| **`on_screen_agent`** | **Gemini 3.7 Flash** | • `draw_whiteboard_lecture_tool(concept_title, steps, step_delay_seconds)`<br>• `draw_whiteboard_step_tool(concept_title, step_number, total_steps, step_label, elements, connections, notes, narration, append_mode)`<br>• `draw_mermaid_diagram_tool(concept_title, nodes, connections, notes, narration)`<br>• `add_whiteboard_clarification_tool(topic, text, target_id, narration)`<br>• `clear_whiteboard_tool()`<br>• `close_whiteboard_tool()` | **On-Screen Whiteboard Tutor**<br>Precompiles multi-step SVG sketch lectures with database cylinders, server boxes, cloud nodes, and curved animated arrows. Controls auto-gliding virtual camera and anchors in-flight doubt cards. |
-| **`strange_planner`** | **Gemini 3.7 Flash Vision** | • `show_annotations_tool(boxes, arrows, duration_seconds)`<br>• `show_screenpad_tool(title, content, content_type, message)`<br>• `uia_get_interactive_elements_tool(window_title, max_elements)`<br>• `uia_search_elements_tool(query, window_title)` | **Visual Screen Guidance & Chess Planner**<br>Pins highlight bounding boxes `[ymin, xmin, ymax, xmax]` and directional pointer arrows over desktop UI controls. Calculates chess board grid coordinates (A1–H8) for visual move guidance. |
-| **`research_agent`** | **Gemini 3.7 Flash** | • Google Search Grounding Tools<br>• `fetch_web_documentation(url, query)` | **Technical Research Specialist**<br>Synthesizes documentation, API specs, and error solutions from live web searches and returns structured summaries without polluting desktop tools. |
-| **`clarification_agent`** | **Gemini 3.7 Flash** | • `ask_human_tool(question, options)`<br>• `render_quiz_card(question_id, prompt, choices)` | **Interactive Q&A & Quiz Master**<br>Conducts turn-by-turn interactive trivia, multi-step user disambiguation, and parameter gathering one question at a time. |
-| **`scratchpad_agent`** | **Gemini 3.7 Flash** | • `show_screenpad_tool(title, content, content_type, message)` | **Code Proposal & Command Card Engine**<br>Displays formatted terminal commands, diff blocks, and code snippets in a persistent on-screen card for quick copy-paste and review. |
-| **`general_agent`** | **Gemini 3.7 Flash + TTS** | • `search_and_explore_places_tool(query, location_hint)`<br>• `read_grounded_news_tool(topic, count)`<br>• `create_todo_task_tool(title, description, priority, due_date, tags)`<br>• `list_todo_tasks_tool(status, priority)` | **Companion & Places Explorer**<br>Handles natural conversation, weather/news broadcasts, Google Maps place exploration, and daily productivity management with expressive emotion audio tags. |
-
----
-
-## 🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)
-
-Cup Work bridges high-level AI reasoning with low-level Windows OS control through a 6-phase execution pipeline:
-
-```
-[ Phase 1: User Goal & Context Injection ]
-                      │
-[ Phase 2: Dual-Tier Perception (UIA + Gemini Vision) ]
-                      │
-[ Phase 3: Zero-Trust Safety Gate (HITL) ]
-                      │
-[ Phase 4: WebSocket JSON-RPC Multi-Action Execution ]
-                      │
-[ Phase 5: Closed-Loop Visual Verification (Goal Verifier) ]
-                      │
-[ Phase 6: Real-Time Multimodal Voice & Overlay Streaming ]
-```
-
-### Phase 1: Dynamic Intent Routing & Context Injection
-1. User provides a goal via voice (Web Speech API / Gemini Live) or text.
-2. The `root_agent` receives the prompt along with an **injected context block** containing:
-   - **Active Preferences:** Filtered from SQLite (e.g., `package_manager: pnpm`, `editor: VS Code`).
-   - **Active Todos:** Unfinished tasks for the day.
-   - **Hardware ID:** Device context (`desktop-main`).
-3. `root_agent` calls Google ADK's `transfer_to_agent("main_executor")` or the relevant specialist.
-
-### Phase 2: Dual-Tier Perception Engine (Speed + Robustness)
-When an agent needs to locate an on-screen button or inspect terminal text:
-* **Tier 1 (Sub-15ms UIA Query):** The agent calls `uia_get_interactive_elements_tool()` or `uia_search_elements_tool()`. The Python backend sends a WebSocket request to Electron's native Windows UI Automation bridge, returning bounding rectangles, control types (`Button`, `Edit`, `MenuItem`), and accessibility IDs.
-* **Tier 2 (Gemini Vision Grounding Fallback):** If an application is rendered on a custom HTML5 canvas, OpenGL viewport, or game engine, UIA returns empty nodes. The system automatically captures a PNG screenshot, encodes it to base64, and prompts **Gemini 3.7 Flash Vision** with a normalized coordinate system ($0\text{--}1000$). Gemini returns exact spatial bounding boxes mapped back to physical display pixels.
-
-### Phase 3: Zero-Trust Human-In-The-Loop (HITL) Safety Gate
-Before any command reaches the operating system:
-1. `main_executor` passes the proposed action through `hitl_manager`.
-2. Actions categorized as **read-only / safe** (e.g., `focus_window`, `take_screenshot`, `scroll`, `uia_get_text`) execute immediately without user interruption.
-3. Actions categorized as **high-risk or mutating** (e.g., running shell commands, terminating processes, modifying system files, clicking checkout buttons) trigger `ask_human_tool`.
-4. An interactive glassmorphism card appears on screen with options. The agent halts execution until the user gives explicit voice or click approval.
-
-### Phase 4: Multi-Action Chained Execution over WebSocket JSON-RPC
-To eliminate sluggish single-keypress turn delays:
-* The model can chain complementary tool invocations in a single response turn:
-  ```json
-  [
-    {"name": "focus_window", "args": {"windowTitle": "PowerShell", "maximize": true}},
-    {"name": "keyboard_type", "args": {"text": "npm run test:unit"}},
-    {"name": "press_hotkey", "args": {"hotkey": "Return"}}
-  ]
-  ```
-* The Python backend dispatches these tools over WebSocket (`ws://127.0.0.1:8765/ws`) to Electron, which executes them sequentially via native Windows `SendInput` APIs and Win32 window handles.
-
-### Phase 5: Mid-Flight Goal Verification & Self-Correction
-After executing the action chain:
-1. Electron captures an instant post-action screenshot.
-2. `goal_verifier` calls **Gemini 3.7 Flash Vision** to compare the screen state against the expected sub-goal.
-3. **If Verified:** The executor marks the step complete and proceeds to the next planned phase.
-4. **If Not Verified (State unchanged or error dialog detected):** The agent does NOT enter a blind loop. It diagnoses why the action failed (e.g., window lost focus, button disabled), updates its plan, and tries an alternative path (e.g., keyboard hotkey instead of mouse click).
-
-### Phase 6: Real-Time Multimodal Voice & Overlay Streaming
-Throughout execution:
-* **Audio Synthesis:** Spoken responses are generated via **Gemini Flash TTS** using inline emotion tags (`[excitedly]`, `[thoughtful]`, `[serious]`) and streamed as raw 24kHz PCM chunks directly to the Web Audio buffer.
-* **On-Screen Canvas:** Whiteboard diagrams and highlight boxes render live on the transparent click-through Electron overlay without taking focus away from the user's active work.
-
----
-
 ## 🧪 Running Automated Tests
 
 Run backend tests to verify agent routing, memory management, and API endpoints:
@@ -594,4 +596,5 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 <div align="center">
   <sub>Built with ❤️ for the Google Gemini Developer Competition.</sub>
 </div>
+
 
