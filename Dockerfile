@@ -20,8 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy backend source code
+# Copy backend source code and static assets
 COPY backend/ /app/backend/
+COPY public/ /app/public/
 
 # Create data directory with proper write permissions for SQLite
 RUN mkdir -p /app/backend/data && chmod -R 777 /app/backend/data
