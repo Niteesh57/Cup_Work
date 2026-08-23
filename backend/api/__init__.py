@@ -7,6 +7,7 @@ from backend.api.voice import router as voice_router
 from backend.api.session import router as session_router
 from backend.api.todos import router as todos_router
 from backend.api.memory import router as memory_router
+from backend.api.download import router as download_router
 
 api_router = APIRouter()
 
@@ -17,6 +18,7 @@ api_router.include_router(voice_router)
 api_router.include_router(session_router)
 api_router.include_router(todos_router)
 api_router.include_router(memory_router)
+api_router.include_router(download_router)
 
 __all__ = [
     "api_router",
@@ -27,4 +29,5 @@ __all__ = [
     "session_router",
     "todos_router",
     "memory_router",
+    "download_router",
 ]

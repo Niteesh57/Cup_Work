@@ -2,8 +2,11 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict
+from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.agents import hitl_manager
 from backend.bridge.electron_bridge import electron_bridge
@@ -13,6 +16,10 @@ from backend.api import api_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("cup_work.server")
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+PUBLIC_DIR = ROOT_DIR / "public"
+LANDING_DIR = PUBLIC_DIR / "landing"
 
 
 @asynccontextmanager
@@ -33,6 +40,69 @@ app.add_middleware(
 
 # ── Include Modular API Routes ────────────────────────────────────────────────
 app.include_router(api_router)
+
+# ── Static Landing Page & Assets ──────────────────────────────────────────────
+if PUBLIC_DIR.exists():
+    app.mount("/public", StaticFiles(directory=str(PUBLIC_DIR)), name="public")
+
+@app.get("/")
+@app.get("/landing")
+async def serve_landing_page():
+    landing_index = LANDING_DIR / "index.html"
+    if landing_index.exists():
+        return FileResponse(str(landing_index))
+    return {
+        "status": "online",
+        "service": "Cup Work Brain Server v2.0",
+        "endpoints": {
+            "api": "/api",
+            "download_windows": "/api/download/windows",
+            "download_info": "/api/download/info",
+            "websocket": "/ws"
+        }
+    }
+
+@app.get("/style.css")
+@app.get("/landing/style.css")
+async def serve_style():
+    css_file = LANDING_DIR / "style.css"
+    if css_file.exists():
+        return FileResponse(str(css_file), media_type="text/css")
+    return {"error": "style.css not found"}
+
+@app.get("/app.js")
+@app.get("/landing/app.js")
+async def serve_js():
+    js_file = LANDING_DIR / "app.js"
+    if js_file.exists():
+        return FileResponse(str(js_file), media_type="application/javascript")
+    return {"error": "app.js not found"}
+
+@app.get("/icon.png")
+@app.get("/landing/icon.png")
+async def serve_icon():
+    icon_file = PUBLIC_DIR / "icon.png"
+    if icon_file.exists():
+        return FileResponse(str(icon_file), media_type="image/png")
+    return {"error": "icon.png not found"}
+
+@app.get("/Architecture.svg")
+@app.get("/landing/Architecture.svg")
+async def serve_arch():
+    svg_file = PUBLIC_DIR / "Architecture.svg"
+    if svg_file.exists():
+        return FileResponse(str(svg_file), media_type="image/svg+xml")
+    return {"error": "Architecture.svg not found"}
+
+@app.get("/demo-video.mp4")
+async def serve_video():
+    video_file = PUBLIC_DIR / "demo-video.mp4"
+    if video_file.exists():
+        return FileResponse(str(video_file), media_type="video/mp4")
+    return {"error": "Video not found"}
+
+
+
 
 
 # ── Event Bus → Electron WebSocket Forwarder ────────────────────────────────

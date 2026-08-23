@@ -103,7 +103,39 @@ def test_routes():
     res = client.get(f"/api/user/context?userId={user_id}&deviceId=test_dev_001")
     assert res.status_code == 200 and "agentContext" in res.json()
 
-    print("[PASS] All endpoints in backend/api/ verified successfully!")
+    # 9. Landing Page and Download API
+    res = client.get("/")
+    assert res.status_code == 200
+
+    res = client.get("/landing")
+    assert res.status_code == 200
+
+    res = client.get("/api/download/info")
+    assert res.status_code == 200
+    dl_info = res.json()
+    assert "version" in dl_info
+    assert "filename" in dl_info
+    print(f"  Download Info: {dl_info}")
+
+    res = client.get("/style.css")
+    assert res.status_code == 200 and "text/css" in res.headers.get("content-type", "")
+
+    res = client.get("/app.js")
+    assert res.status_code == 200
+
+    res = client.get("/icon.png")
+    assert res.status_code == 200 and "image/png" in res.headers.get("content-type", "")
+
+    res = client.get("/Architecture.svg")
+    assert res.status_code == 200 and "image/svg+xml" in res.headers.get("content-type", "")
+
+    res = client.get("/api/download/windows")
+    # If the installer exists, it should return 200 and octet-stream
+    if dl_info.get("available"):
+        assert res.status_code == 200
+        assert "application/octet-stream" in res.headers.get("content-type", "")
+
+    print("[SUCCESS] All API routes, download endpoints, static assets, and landing page verified!")
 
 if __name__ == "__main__":
     test_routes()
