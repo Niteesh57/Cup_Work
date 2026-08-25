@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 router = APIRouter(tags=["Download"])
 
@@ -13,6 +13,12 @@ PUBLIC_DIR = ROOT_DIR / "public"
 PUBLIC_DOWNLOADS_DIR = PUBLIC_DIR / "downloads"
 DIST_RELEASE_DIR = ROOT_DIR / "dist-release"
 RELEASE_DIR = ROOT_DIR / "release"
+
+# Cloud fallback URL (e.g. GitHub Releases or CDN host)
+DEFAULT_CLOUD_DOWNLOAD_URL = os.getenv(
+    "WINDOWS_INSTALLER_URL", 
+    "https://github.com/Niteesh57/Jave/releases/download/v2.0.0/Cup-Work-Setup-2.0.0.exe"
+)
 
 def _find_installer() -> Optional[Path]:
     search_dirs = [PUBLIC_DOWNLOADS_DIR, PUBLIC_DIR, DIST_RELEASE_DIR, RELEASE_DIR]
@@ -34,13 +40,23 @@ def _find_installer() -> Optional[Path]:
 async def get_download_info():
     installer = _find_installer()
     if not installer or not installer.exists():
+        # Cloud environment fallback info
         return {
-            "available": False,
+            "available": True,
             "version": "2.0.0",
             "filename": "Cup-Work-Setup-2.0.0.exe",
-            "size_bytes": 0,
-            "size_formatted": "Ready to build",
-            "os": "Windows 10/11 64-bit",
+            "actual_file": "Cup-Work-Setup-2.0.0.exe",
+            "download_url": DEFAULT_CLOUD_DOWNLOAD_URL,
+            "size_bytes": 251690502,
+            "size_formatted": "240.0 MB",
+            "os": "Windows 10 / 11 (64-bit)",
+            "published_at": "2026-08-25",
+            "requirements": {
+                "os": "Windows 10/11 64-bit",
+                "python": "Python 3.10+",
+                "ram": "4 GB RAM minimum (8 GB recommended)",
+                "api_key": "Google Gemini API Key"
+            }
         }
     
     size_bytes = installer.stat().st_size
@@ -51,7 +67,7 @@ async def get_download_info():
         "version": "2.0.0",
         "filename": installer.name,
         "actual_file": installer.name,
-        "download_url": f"/public/downloads/{installer.name}" if (PUBLIC_DOWNLOADS_DIR / installer.name).exists() else "/api/download/windows",
+        "download_url": "/api/download/windows",
         "size_bytes": size_bytes,
         "size_formatted": f"{size_mb} MB",
         "os": "Windows 10 / 11 (64-bit)",
@@ -70,9 +86,12 @@ async def get_download_info():
 async def download_windows_installer():
     installer = _find_installer()
     if not installer or not installer.exists():
+        # In cloud environments where .exe is not tracked in git, redirect to GitHub release asset
+        if DEFAULT_CLOUD_DOWNLOAD_URL:
+            return RedirectResponse(url=DEFAULT_CLOUD_DOWNLOAD_URL, status_code=307)
         raise HTTPException(
             status_code=404, 
-            detail="Windows installer package not found in release directory. Please run 'npm run dist' to build."
+            detail="Windows installer package not found. Please set WINDOWS_INSTALLER_URL or download from GitHub Releases."
         )
     
     filename = installer.name
@@ -84,4 +103,5 @@ async def download_windows_installer():
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
+
 
