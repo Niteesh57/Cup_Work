@@ -1,0 +1,472 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3200 1700" width="100%" height="100%" style="background:#0B0F19; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <!-- Linear Gradients -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="50%" stop-color="#0B0F19" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <linearGradient id="cloudRunGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.95" />
+    </linearGradient>
+
+    <linearGradient id="geminiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2E1065" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#1E1B4B" stop-opacity="0.7" />
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.8" />
+    </linearGradient>
+
+    <linearGradient id="rootAgentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#4C1D95" />
+    </linearGradient>
+
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+
+    <linearGradient id="subAgentGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="100%" stop-color="#172554" />
+    </linearGradient>
+
+    <linearGradient id="ttsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F766E" />
+      <stop offset="100%" stop-color="#134E4A" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FACC15" />
+      <stop offset="100%" stop-color="#CA8A04" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F87171" />
+      <stop offset="100%" stop-color="#DC2626" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ADE80" />
+      <stop offset="100%" stop-color="#16A34A" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FB923C" />
+      <stop offset="100%" stop-color="#EA580C" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2DD4BF" />
+      <stop offset="100%" stop-color="#0D9488" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad6" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A3E635" />
+      <stop offset="100%" stop-color="#65A30D" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad7" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+
+    <linearGradient id="badgeStepGrad8" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FB7185" />
+      <stop offset="100%" stop-color="#E11D48" />
+    </linearGradient>
+
+    <!-- Drop Shadows & Glows -->
+    <filter id="glowPurple" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#8B5CF6" flood-opacity="0.35" />
+    </filter>
+
+    <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#06B6D4" flood-opacity="0.35" />
+    </filter>
+
+    <filter id="glowBlue" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#3B82F6" flood-opacity="0.3" />
+    </filter>
+
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+
+    <!-- Arrow Markers -->
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38BDF8" />
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#A855F7" />
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#34D399" />
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#F87171" />
+    </marker>
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2DD4BF" />
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#94A3B8" />
+    </marker>
+  </defs>
+
+  <!-- Background Base Canvas -->
+  <rect x="0" y="0" width="3200" height="1700" fill="url(#bgGradient)" />
+  
+  <!-- Subtle Grid Overlay -->
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#334155" stroke-width="0.5" stroke-opacity="0.2" />
+  </pattern>
+  <rect x="0" y="0" width="3200" height="1700" fill="url(#grid)" />
+
+  <!-- HEADER / TITLE -->
+  <g id="header-group" transform="translate(1600, 70)">
+    <text x="0" y="0" text-anchor="middle" fill="#F8FAFC" font-size="44" font-weight="800" letter-spacing="-0.5">
+      Agent Development Kit (ADK) Architecture
+    </text>
+    <text x="0" y="44" text-anchor="middle" fill="#94A3B8" font-size="20" font-weight="500" letter-spacing="0.5">
+      High-Throughput Multimodal Agent Orchestration  •  Gemini 3.7 Flash  •  Gemini 3.1 Flash TTS  •  Electron WebSocket Bridge
+    </text>
+  </g>
+
+  <!-- ======================== 1. CLOUD RUN BACKEND CONTAINER ======================== -->
+  <g id="cloud-run-container" transform="translate(340, 160)">
+    <!-- Outer Cloud Run Box -->
+    <rect x="0" y="0" width="2520" height="1480" rx="24" fill="url(#cloudRunGrad)" stroke="#3B82F6" stroke-width="2.5" filter="url(#glowBlue)" />
+    
+    <!-- Cloud Run Header Tag -->
+    <g transform="translate(40, 30)">
+      <rect x="0" y="0" width="440" height="56" rx="14" fill="#1E3A8A" fill-opacity="0.6" stroke="#60A5FA" stroke-width="1.5" />
+      <circle cx="32" cy="28" r="14" fill="#3B82F6" />
+      <path d="M26 28 C26 23 38 23 38 28 C38 33 26 33 26 28" stroke="#FFFFFF" stroke-width="2" fill="none" />
+      <text x="60" y="37" fill="#93C5FD" font-size="24" font-weight="700">Google Cloud Run Service</text>
+    </g>
+
+    <!-- Ingestion Stage 1: AdkRunner & Session Service -->
+    <g id="node-adk-runner" transform="translate(40, 480)">
+      <rect x="0" y="0" width="220" height="170" rx="16" fill="url(#cardGrad)" stroke="#38BDF8" stroke-width="2" filter="url(#cardShadow)" />
+      <text x="110" y="60" text-anchor="middle" fill="#F1F5F9" font-size="22" font-weight="700">AdkRunner &amp;</text>
+      <text x="110" y="92" text-anchor="middle" fill="#38BDF8" font-size="20" font-weight="700">Session Service</text>
+      <text x="110" y="130" text-anchor="middle" fill="#94A3B8" font-size="14" font-weight="500">Pipeline Host &amp; State</text>
+    </g>
+
+    <!-- Ingestion Stage 2: MemoryManager -->
+    <g id="node-memory-mgr" transform="translate(40, 260)">
+      <rect x="0" y="0" width="220" height="140" rx="16" fill="#064E3B" fill-opacity="0.5" stroke="#10B981" stroke-width="2" filter="url(#cardShadow)" />
+      <text x="110" y="58" text-anchor="middle" fill="#A7F3D0" font-size="22" font-weight="700">MemoryManager</text>
+      <text x="110" y="98" text-anchor="middle" fill="#6EE7B7" font-size="15" font-weight="500">Context &amp; Conversation</text>
+    </g>
+
+    <!-- Connector: AdkRunner <-> MemoryManager -->
+    <path d="M 150 480 L 150 400" stroke="#34D399" stroke-width="3.5" stroke-dasharray="6 6" marker-end="url(#arrowEmerald)" marker-start="url(#arrowEmerald)" />
+    
+    <!-- Badge 2: Step 2 Context Sync -->
+    <g transform="translate(175, 420)">
+      <circle cx="20" cy="20" r="20" fill="url(#badgeStepGrad2)" />
+      <text x="20" y="27" text-anchor="middle" fill="#FFFFFF" font-size="20" font-weight="800">2</text>
+    </g>
+
+    <!-- ==================== 2. GEMINI 3.7 FLASH COGNITIVE CORE ==================== -->
+    <g id="gemini-core-group" transform="translate(380, 110)">
+      <!-- Container -->
+      <rect x="0" y="0" width="1540" height="1320" rx="24" fill="url(#geminiGrad)" stroke="#8B5CF6" stroke-width="2.5" stroke-dasharray="10 10" filter="url(#glowPurple)" />
+      
+      <!-- Core Title Header -->
+      <g transform="translate(770, 48)">
+        <text x="0" y="0" text-anchor="middle" fill="#DDD6FE" font-size="30" font-weight="800" letter-spacing="0.5">
+          ⚡ Gemini-3.7-Flash (Cognitive Core &amp; Multi-Agent Swarm)
+        </text>
+      </g>
+
+      <!-- ROOT AGENT (DYNAMIC ROUTER) -->
+      <g id="node-root-agent" transform="translate(480, 80)">
+        <rect x="0" y="0" width="580" height="150" rx="20" fill="url(#rootAgentGrad)" stroke="#C4B5FD" stroke-width="2.5" filter="url(#glowPurple)" />
+        <text x="290" y="46" text-anchor="middle" fill="#FFFFFF" font-size="28" font-weight="800">👑 Root Agent</text>
+        <text x="290" y="80" text-anchor="middle" fill="#DDD6FE" font-size="20" font-style="italic" font-weight="600">(Dynamic Agent Router &amp; Orchestrator)</text>
+        <text x="290" y="118" text-anchor="middle" fill="#EDE9FE" font-size="15" font-weight="500">Intent Classification  •  Task Decomposition  •  Swarm Delegation</text>
+
+        <!-- System Tools Badge Attached to Root Agent -->
+        <g transform="translate(215, 160)">
+          <rect x="0" y="0" width="150" height="34" rx="8" fill="#EF4444" fill-opacity="0.3" stroke="#F87171" stroke-width="1.5" />
+          <text x="75" y="23" text-anchor="middle" fill="#FCA5A5" font-size="14" font-weight="800" letter-spacing="1">SYSTEM TOOLS</text>
+        </g>
+      </g>
+
+      <!-- Step 4 Badge (Routing Decision) -->
+      <g transform="translate(420, 130)">
+        <circle cx="24" cy="24" r="24" fill="url(#badgeStepGrad4)" />
+        <text x="24" y="32" text-anchor="middle" fill="#FFFFFF" font-size="22" font-weight="800">4</text>
+      </g>
+
+      <!-- VERIFICATION & HITL SWIMLANE (LEFT SIDE OF CORE) -->
+      <g id="verification-panel" transform="translate(40, 270)">
+        <rect x="0" y="0" width="280" height="350" rx="16" fill="#450A0A" fill-opacity="0.4" stroke="#EF4444" stroke-width="2" />
+        <text x="140" y="38" text-anchor="middle" fill="#FCA5A5" font-size="19" font-weight="800">Verification &amp; Safety Guard</text>
+
+        <!-- Goal Verifier -->
+        <g transform="translate(20, 60)">
+          <rect x="0" y="0" width="240" height="110" rx="12" fill="#1E293B" stroke="#F87171" stroke-width="1.5" />
+          <text x="120" y="44" text-anchor="middle" fill="#FFFFFF" font-size="19" font-weight="700">🎯 GoalVerifier</text>
+          <text x="120" y="74" text-anchor="middle" fill="#FDA4AF" font-size="14" font-weight="500">Task Completion Check</text>
+          <text x="120" y="96" text-anchor="middle" fill="#FDA4AF" font-size="14" font-weight="500">&amp; Result Consistency</text>
+        </g>
+
+        <!-- Human-in-the-Loop Dialogs -->
+        <g transform="translate(20, 195)">
+          <rect x="0" y="0" width="240" height="125" rx="12" fill="#1E293B" stroke="#F87171" stroke-width="1.5" />
+          <text x="120" y="42" text-anchor="middle" fill="#FFFFFF" font-size="18" font-weight="700">🛡️ Human-in-the-Loop</text>
+          <text x="120" y="70" text-anchor="middle" fill="#FCA5A5" font-size="16" font-weight="600">Dialogs &amp; Approval</text>
+          <text x="120" y="104" text-anchor="middle" fill="#FDA4AF" font-size="14" font-weight="500">User Confirmation Gate</text>
+        </g>
+      </g>
+
+      <!-- Bidirectional Control Path: Root Agent <-> Verification Panel -->
+      <path d="M 480 155 L 290 155 L 290 270" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-dasharray="6 6" marker-end="url(#arrowRed)" marker-start="url(#arrowRed)" />
+      <text x="335" y="200" fill="#FCA5A5" font-size="15" font-weight="700">Bidirectional Control</text>
+
+      <!-- ================= 7 SPECIALIST SUB-AGENTS (CRYSTAL CLEAR CARDS) ================= -->
+      <!-- 1. GeneralAgent -->
+      <g id="agent-general" transform="translate(350, 360)">
+        <rect x="0" y="0" width="155" height="145" rx="16" fill="url(#subAgentGrad)" stroke="#818CF8" stroke-width="2" filter="url(#cardShadow)" />
+        <text x="77" y="42" text-anchor="middle" fill="#FFFFFF" font-size="18" font-weight="700">GeneralAgent</text>
+        <text x="77" y="74" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Conversation &amp;</text>
+        <text x="77" y="96" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Broad Inquiries</text>
+        <rect x="35" y="110" width="85" height="24" rx="6" fill="#DC2626" fill-opacity="0.4" stroke="#F87171" stroke-width="1" />
+        <text x="77" y="126" text-anchor="middle" fill="#FECACA" font-size="12" font-weight="800">TOOLS</text>
+      </g>
+
+      <!-- 2. MainExecutor -->
+      <g id="agent-executor" transform="translate(520, 360)">
+        <rect x="0" y="0" width="155" height="145" rx="16" fill="url(#subAgentGrad)" stroke="#818CF8" stroke-width="2" filter="url(#cardShadow)" />
+        <text x="77" y="42" text-anchor="middle" fill="#FFFFFF" font-size="18" font-weight="700">MainExecutor</text>
+        <text x="77" y="74" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Primary Task Exec</text>
+        <text x="77" y="96" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">&amp; OS Automation</text>
+        <rect x="35" y="110" width="85" height="24" rx="6" fill="#DC2626" fill-opacity="0.4" stroke="#F87171" stroke-width="1" />
+        <text x="77" y="126" text-anchor="middle" fill="#FECACA" font-size="12" font-weight="800">TOOLS</text>
+      </g>
+
+      <!-- 3. StrangePlanner -->
+      <g id="agent-planner" transform="translate(690, 360)">
+        <rect x="0" y="0" width="155" height="145" rx="16" fill="url(#subAgentGrad)" stroke="#818CF8" stroke-width="2" filter="url(#cardShadow)" />
+        <text x="77" y="42" text-anchor="middle" fill="#FFFFFF" font-size="18" font-weight="700">StrangePlanner</text>
+        <text x="77" y="74" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Multi-Step CoT &amp;</text>
+        <text x="77" y="96" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Branch Planning</text>
+        <rect x="35" y="110" width="85" height="24" rx="6" fill="#DC2626" fill-opacity="0.4" stroke="#F87171" stroke-width="1" />
+        <text x="77" y="126" text-anchor="middle" fill="#FECACA" font-size="12" font-weight="800">TOOLS</text>
+      </g>
+
+      <!-- 4. OnScreenAgent -->
+      <g id="agent-onscreen" transform="translate(860, 360)">
+        <rect x="0" y="0" width="155" height="145" rx="16" fill="url(#subAgentGrad)" stroke="#818CF8" stroke-width="2" filter="url(#cardShadow)" />
+        <text x="77" y="42" text-anchor="middle" fill="#FFFFFF" font-size="18" font-weight="700">OnScreenAgent</text>
+        <text x="77" y="74" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Vision, OCR &amp;</text>
+        <text x="77" y="96" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">UI Grounding</text>
+        <rect x="35" y="110" width="85" height="24" rx="6" fill="#DC2626" fill-opacity="0.4" stroke="#F87171" stroke-width="1" />
+        <text x="77" y="126" text-anchor="middle" fill="#FECACA" font-size="12" font-weight="800">TOOLS</text>
+      </g>
+
+      <!-- 5. ClarificationAgent -->
+      <g id="agent-clarify" transform="translate(1030, 360)">
+        <rect x="0" y="0" width="155" height="145" rx="16" fill="url(#subAgentGrad)" stroke="#818CF8" stroke-width="2" filter="url(#cardShadow)" />
+        <text x="77" y="42" text-anchor="middle" fill="#FFFFFF" font-size="17" font-weight="700">ClarificationAgent</text>
+        <text x="77" y="74" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Disambiguation</text>
+        <text x="77" y="96" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">&amp; User Inquiries</text>
+        <rect x="35" y="110" width="85" height="24" rx="6" fill="#DC2626" fill-opacity="0.4" stroke="#F87171" stroke-width="1" />
+        <text x="77" y="126" text-anchor="middle" fill="#FECACA" font-size="12" font-weight="800">TOOLS</text>
+      </g>
+
+      <!-- 6. ResearchAgent -->
+      <g id="agent-research" transform="translate(1200, 360)">
+        <rect x="0" y="0" width="155" height="145" rx="16" fill="url(#subAgentGrad)" stroke="#818CF8" stroke-width="2" filter="url(#cardShadow)" />
+        <text x="77" y="42" text-anchor="middle" fill="#FFFFFF" font-size="18" font-weight="700">ResearchAgent</text>
+        <text x="77" y="74" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Web Search &amp;</text>
+        <text x="77" y="96" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Knowledge Fetch</text>
+        <rect x="35" y="110" width="85" height="24" rx="6" fill="#DC2626" fill-opacity="0.4" stroke="#F87171" stroke-width="1" />
+        <text x="77" y="126" text-anchor="middle" fill="#FECACA" font-size="12" font-weight="800">TOOLS</text>
+      </g>
+
+      <!-- 7. ScratchpadAgent -->
+      <g id="agent-scratchpad" transform="translate(1370, 360)">
+        <rect x="0" y="0" width="150" height="145" rx="16" fill="url(#subAgentGrad)" stroke="#818CF8" stroke-width="2" filter="url(#cardShadow)" />
+        <text x="75" y="42" text-anchor="middle" fill="#FFFFFF" font-size="17" font-weight="700">ScratchpadAgent</text>
+        <text x="75" y="74" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">Code Sandbox</text>
+        <text x="75" y="96" text-anchor="middle" fill="#C7D2FE" font-size="14" font-weight="500">&amp; Draft Logic</text>
+        <rect x="32" y="110" width="85" height="24" rx="6" fill="#DC2626" fill-opacity="0.4" stroke="#F87171" stroke-width="1" />
+        <text x="75" y="126" text-anchor="middle" fill="#FECACA" font-size="12" font-weight="800">TOOLS</text>
+      </g>
+
+      <!-- Orchestration Distribution Lines (Root Agent to 7 Sub-Agents) -->
+      <path d="M 550 230 L 427 360" stroke="#A855F7" stroke-width="2" marker-end="url(#arrowPurple)" />
+      <path d="M 620 230 L 597 360" stroke="#A855F7" stroke-width="2" marker-end="url(#arrowPurple)" />
+      <path d="M 700 230 L 767 360" stroke="#A855F7" stroke-width="2" marker-end="url(#arrowPurple)" />
+      <path d="M 770 230 L 937 360" stroke="#A855F7" stroke-width="2" marker-end="url(#arrowPurple)" />
+      <path d="M 840 230 L 1107 360" stroke="#A855F7" stroke-width="2" marker-end="url(#arrowPurple)" />
+      <path d="M 910 230 L 1277 360" stroke="#A855F7" stroke-width="2" marker-end="url(#arrowPurple)" />
+      <path d="M 980 230 L 1445 360" stroke="#A855F7" stroke-width="2" marker-end="url(#arrowPurple)" />
+
+      <!-- ================= 8. DISPATCHED ACTIONS & UI FEEDBACK SWIMLANE (BOTTOM OF CORE) ================= -->
+      <g id="actions-panel" transform="translate(40, 560)">
+        <rect x="0" y="0" width="1460" height="720" rx="20" fill="#0F172A" fill-opacity="0.85" stroke="#475569" stroke-width="2" />
+        <text x="730" y="45" text-anchor="middle" fill="#94A3B8" font-size="22" font-weight="800" letter-spacing="1">
+          DISPATCHED ACTIONS, VISUAL OVERLAYS &amp; INTERACTIVE CARDS
+        </text>
+
+        <!-- Action Card 1: Windows UIA & Automation -->
+        <g transform="translate(40, 75)">
+          <rect x="0" y="0" width="1380" height="125" rx="16" fill="#1E293B" stroke="#38BDF8" stroke-width="1.5" />
+          <text x="30" y="50" fill="#F8FAFC" font-size="24" font-weight="700">🖱️ Windows UIA &amp; OS Automation Engine</text>
+          <text x="30" y="92" fill="#94A3B8" font-size="17" font-weight="500">
+            Native OS Windows Automation  •  Window Hierarchy Navigation  •  Keystrokes &amp; High-Precision Clicks
+          </text>
+        </g>
+
+        <!-- Action Card 2: Bounding Box Highlights -->
+        <g transform="translate(40, 230)">
+          <rect x="0" y="0" width="1380" height="125" rx="16" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5" />
+          <text x="30" y="50" fill="#F8FAFC" font-size="24" font-weight="700">🎯 Bounding Box Highlights &amp; Pointer Arrows</text>
+          <text x="30" y="92" fill="#94A3B8" font-size="17" font-weight="500">
+            On-Screen Visual Grounding  •  Dynamic Targeted Highlighting  •  Interactive Attention Guidance
+          </text>
+        </g>
+
+        <!-- Action Card 3: Animated SVG Whiteboard -->
+        <g transform="translate(40, 385)">
+          <rect x="0" y="0" width="1380" height="125" rx="16" fill="#1E293B" stroke="#EC4899" stroke-width="1.5" />
+          <text x="30" y="50" fill="#F8FAFC" font-size="24" font-weight="700">🎨 Animated SVG Whiteboard &amp; Canvas</text>
+          <text x="30" y="92" fill="#94A3B8" font-size="17" font-weight="500">
+            Live Interactive Architecture Diagrams  •  Dynamic Step-by-Step SVG Flowcharts  •  Freeform Canvas
+          </text>
+        </g>
+
+        <!-- Action Card 4: Command & Markdown Cards -->
+        <g transform="translate(40, 540)">
+          <rect x="0" y="0" width="1380" height="125" rx="16" fill="#1E293B" stroke="#10B981" stroke-width="1.5" />
+          <text x="30" y="50" fill="#F8FAFC" font-size="24" font-weight="700">📄 Command &amp; Markdown Interactive Cards</text>
+          <text x="30" y="92" fill="#94A3B8" font-size="17" font-weight="500">
+            Rich Formatted Text  •  Executable Code Blocks &amp; Copy Buttons  •  Rich Link Action Triggers
+          </text>
+        </g>
+      </g>
+    </g>
+
+    <!-- ==================== 3. RIGHT STREAMING PIPELINE ==================== -->
+    <!-- Gemini Flash TTS Container -->
+    <g id="tts-container" transform="translate(1960, 110)">
+      <rect x="0" y="0" width="250" height="350" rx="20" fill="#042F2E" fill-opacity="0.6" stroke="#14B8A6" stroke-width="2" stroke-dasharray="8 8" filter="url(#glowCyan)" />
+      <text x="125" y="40" text-anchor="middle" fill="#5EEAD4" font-size="18" font-weight="800">Gemini-3.1-Flash-TTS</text>
+      
+      <g transform="translate(20, 70)">
+        <rect x="0" y="0" width="210" height="250" rx="16" fill="url(#ttsGrad)" stroke="#2DD4BF" stroke-width="1.5" />
+        <text x="105" y="80" text-anchor="middle" fill="#FFFFFF" font-size="36">🎙️</text>
+        <text x="105" y="130" text-anchor="middle" fill="#FFFFFF" font-size="22" font-weight="700">Gemini</text>
+        <text x="105" y="162" text-anchor="middle" fill="#CCFBF1" font-size="20" font-weight="700">TTS Streamer</text>
+        <text x="105" y="208" text-anchor="middle" fill="#99F6E4" font-size="14" font-weight="500">Real-Time Audio</text>
+      </g>
+    </g>
+
+    <!-- Connector: Root Agent -> TTS Streamer -->
+    <path d="M 1440 250 L 1980 250" fill="none" stroke="#2DD4BF" stroke-width="3.5" marker-end="url(#arrowTeal)" />
+    <text x="1710" y="235" text-anchor="middle" fill="#5EEAD4" font-size="16" font-weight="700">Text Response Stream</text>
+
+    <!-- Badge 5: Step 5 TTS Conversion -->
+    <g transform="translate(1930, 230)">
+      <circle cx="22" cy="22" r="22" fill="url(#badgeStepGrad5)" />
+      <text x="22" y="29" text-anchor="middle" fill="#FFFFFF" font-size="20" font-weight="800">5</text>
+    </g>
+
+    <!-- EventBus Node -->
+    <g id="node-eventbus" transform="translate(2250, 480)">
+      <rect x="0" y="0" width="230" height="170" rx="18" fill="url(#cardGrad)" stroke="#A3E635" stroke-width="2.5" filter="url(#cardShadow)" />
+      <text x="115" y="52" text-anchor="middle" fill="#BEF264" font-size="24" font-weight="800">📡 EventBus</text>
+      <text x="115" y="88" text-anchor="middle" fill="#ECFCCB" font-size="16" font-weight="600">(Queue &amp; Sync)</text>
+      <text x="115" y="128" text-anchor="middle" fill="#94A3B8" font-size="13.5" font-weight="500">Multiplexes Audio &amp;</text>
+      <text x="115" y="150" text-anchor="middle" fill="#94A3B8" font-size="13.5" font-weight="500">UI Event Streams</text>
+    </g>
+
+    <!-- Connector: TTS -> EventBus -->
+    <path d="M 2085 460 L 2085 565 L 2250 565" fill="none" stroke="#2DD4BF" stroke-width="3.5" marker-end="url(#arrowTeal)" />
+
+    <!-- Badge 6: Step 6 Queue & Sync -->
+    <g transform="translate(2220, 500)">
+      <circle cx="20" cy="20" r="20" fill="url(#badgeStepGrad6)" />
+      <text x="20" y="27" text-anchor="middle" fill="#FFFFFF" font-size="20" font-weight="800">6</text>
+    </g>
+
+    <!-- Electron Bridge Node -->
+    <g id="node-electron-bridge" transform="translate(2250, 750)">
+      <rect x="0" y="0" width="230" height="180" rx="18" fill="url(#cardGrad)" stroke="#38BDF8" stroke-width="2.5" filter="url(#glowCyan)" />
+      <text x="115" y="54" text-anchor="middle" fill="#38BDF8" font-size="24" font-weight="800">🔌 Electron Bridge</text>
+      <text x="115" y="90" text-anchor="middle" fill="#BAE6FD" font-size="16" font-weight="600">(WebSocket / IPC)</text>
+      <text x="115" y="132" text-anchor="middle" fill="#94A3B8" font-size="14" font-weight="500">Low-Latency Socket</text>
+      <text x="115" y="156" text-anchor="middle" fill="#94A3B8" font-size="14" font-weight="500">Bidirectional Pipeline</text>
+    </g>
+
+    <!-- Connector: EventBus -> Electron Bridge -->
+    <path d="M 2365 650 L 2365 750" fill="none" stroke="#A3E635" stroke-width="3.5" marker-end="url(#arrowEmerald)" />
+
+    <!-- Badge 7: Step 7 Socket Stream -->
+    <g transform="translate(2390, 685)">
+      <circle cx="20" cy="20" r="20" fill="url(#badgeStepGrad7)" />
+      <text x="20" y="27" text-anchor="middle" fill="#FFFFFF" font-size="20" font-weight="800">7</text>
+    </g>
+    <text x="2435" y="708" fill="#38BDF8" font-size="15" font-weight="700">Deliver</text>
+
+    <!-- Action Swimlane -> Electron Bridge Connector -->
+    <path d="M 1920 1020 L 2100 1020 L 2100 840 L 2250 840" fill="none" stroke="#38BDF8" stroke-width="3.5" marker-end="url(#arrowCyan)" />
+    <text x="2040" y="995" fill="#38BDF8" font-size="15" font-weight="700">UI Events / Action Overlay</text>
+  </g>
+
+  <!-- ======================== 4. LEFT CLIENT & HANDOVER ======================== -->
+  <!-- Cup Work Client (Left) -->
+  <g id="client-left" transform="translate(60, 640)">
+    <rect x="0" y="0" width="180" height="170" rx="20" fill="url(#cardGrad)" stroke="#38BDF8" stroke-width="2.5" filter="url(#cardShadow)" />
+    <text x="90" y="60" text-anchor="middle" fill="#FFFFFF" font-size="34">💻</text>
+    <text x="90" y="105" text-anchor="middle" fill="#F8FAFC" font-size="24" font-weight="800">Cup Work</text>
+    <text x="90" y="138" text-anchor="middle" fill="#38BDF8" font-size="16" font-weight="600">Desktop Client</text>
+  </g>
+
+  <!-- Connector: Cup Work Left -> Cloud Run (AdkRunner) -->
+  <path d="M 240 725 L 380 725" fill="none" stroke="#38BDF8" stroke-width="3.5" marker-end="url(#arrowCyan)" />
+
+  <!-- Badge 1: User Voice / Multimodal Input -->
+  <g transform="translate(285, 660)">
+    <circle cx="24" cy="24" r="24" fill="url(#badgeStepGrad1)" />
+    <text x="24" y="32" text-anchor="middle" fill="#0F172A" font-size="22" font-weight="900">1</text>
+  </g>
+  <text x="309" y="770" text-anchor="middle" fill="#FACC15" font-size="15" font-weight="700">User Voice Input</text>
+
+  <!-- Connector: AdkRunner -> Root Agent -->
+  <path d="M 590 725 L 860 725 L 860 340" fill="none" stroke="#4ADE80" stroke-width="3.5" marker-end="url(#arrowEmerald)" />
+  
+  <!-- Badge 3: Handover Voice & Context -->
+  <g transform="translate(685, 660)">
+    <circle cx="24" cy="24" r="24" fill="url(#badgeStepGrad3)" />
+    <text x="24" y="32" text-anchor="middle" fill="#FFFFFF" font-size="22" font-weight="900">3</text>
+  </g>
+  <text x="709" y="770" text-anchor="middle" fill="#4ADE80" font-size="15" font-weight="700">Handover voice &amp; context</text>
+
+  <!-- ======================== 5. RIGHT CLIENT & OUTPUT ======================== -->
+  <!-- Cup Work Client (Right) -->
+  <g id="client-right" transform="translate(2940, 910)">
+    <rect x="0" y="0" width="200" height="180" rx="20" fill="url(#cardGrad)" stroke="#38BDF8" stroke-width="2.5" filter="url(#glowCyan)" />
+    <text x="100" y="60" text-anchor="middle" fill="#FFFFFF" font-size="34">🎧</text>
+    <text x="100" y="105" text-anchor="middle" fill="#F8FAFC" font-size="24" font-weight="800">Cup Work</text>
+    <text x="100" y="138" text-anchor="middle" fill="#38BDF8" font-size="16" font-weight="600">Live Avatar &amp; Canvas</text>
+  </g>
+
+  <!-- Connector: Electron Bridge -> Cup Work Right -->
+  <path d="M 2820 1000 L 2940 1000" fill="none" stroke="#38BDF8" stroke-width="4" marker-end="url(#arrowCyan)" />
+
+  <!-- Badge 8: Step 8 Execution & Playback -->
+  <g transform="translate(2855, 930)">
+    <circle cx="24" cy="24" r="24" fill="url(#badgeStepGrad8)" />
+    <text x="24" y="32" text-anchor="middle" fill="#FFFFFF" font-size="22" font-weight="900">8</text>
+  </g>
+  <text x="2879" y="1045" text-anchor="middle" fill="#FB7185" font-size="15" font-weight="700">Execution &amp; Audio Stream</text>
+</svg>

@@ -1,6 +1,6 @@
 {
   "name": "hey-jave-desktop-agent",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Production-grade Desktop AI Agent using Electron, Windows UI Automation, and Gemini",
   "main": "dist-electron/index.js",
   "type": "commonjs",
@@ -9,20 +9,37 @@
     "backend": "python backend/main.py",
     "build": "tsc && vite build",
     "build:electron": "npx tsc -p tsconfig.electron.json",
-    "dist": "tsc && vite build && electron-builder --dir",
+    "dist": "tsc && vite build && electron-builder --win",
+    "dist:dir": "tsc && vite build && electron-builder --dir",
     "start": "electron ."
   },
   "build": {
     "appId": "com.cupwork.desktop",
     "productName": "Cup Work",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "directories": {
-      "output": "release"
+      "output": "dist-release"
     },
+
     "win": {
       "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cup Work"
     }
   },
+
   "keywords": [
     "electron",
     "agent",

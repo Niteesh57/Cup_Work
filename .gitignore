@@ -26,9 +26,22 @@ dist/
 dist-electron/
 build/
 release/
+release_old/
+dist-release/
 out/
 tmp/
 temp/
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.asar
+*.blockmap
+*.zip
+*.tar.gz
+public/downloads/
+public/*.exe
 
 # App Agent State & Database
 .agent-state/

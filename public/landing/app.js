@@ -13,6 +13,8 @@ async function initDownloadInfo() {
   const downloadVersionEl = document.getElementById('meta-version');
   const downloadStatusBadge = document.getElementById('backend-status-badge');
 
+  let downloadUrl = '/api/download/windows';
+
   try {
     const res = await fetch('/api/download/info');
     if (res.ok) {
@@ -23,6 +25,9 @@ async function initDownloadInfo() {
       if (downloadVersionEl && data.version) {
         downloadVersionEl.textContent = 'v' + data.version;
       }
+      if (data.download_url) {
+        downloadUrl = data.download_url;
+      }
       if (downloadStatusBadge) {
         downloadStatusBadge.innerHTML = `
           <span class="badge-dot"></span>
@@ -31,24 +36,20 @@ async function initDownloadInfo() {
       }
     }
   } catch (err) {
-    if (downloadSizeEl) downloadSizeEl.textContent = '104.4 MB';
-    if (downloadVersionEl) downloadVersionEl.textContent = 'v1.0.0';
+    if (downloadSizeEl) downloadSizeEl.textContent = '240 MB';
+    if (downloadVersionEl) downloadVersionEl.textContent = 'v2.0.0';
   }
 
   const handleDownload = (e) => {
     e.preventDefault();
-    const isServer = window.location.protocol.startsWith('http');
-    if (isServer) {
-      window.location.href = '/api/download/windows';
-    } else {
-      window.location.href = '../../release/Hey%20Jave%20Setup%201.0.0.exe';
-    }
+    window.location.href = downloadUrl;
   };
 
   if (downloadBtn) downloadBtn.addEventListener('click', handleDownload);
   if (heroDownloadBtn) heroDownloadBtn.addEventListener('click', handleDownload);
   if (navDownloadBtn) navDownloadBtn.addEventListener('click', handleDownload);
 }
+
 
 // ── 2. Interactive Multi-Agent Architecture Visualizer ───────────────────────
 function initArchitectureVisualizer() {
