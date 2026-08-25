@@ -38,6 +38,7 @@ async function initDownloadInfo() {
   } catch (err) {
     if (downloadSizeEl) downloadSizeEl.textContent = '240 MB';
     if (downloadVersionEl) downloadVersionEl.textContent = 'v2.0.0';
+    downloadUrl = 'https://huggingface.co/nagireddy5/APP/resolve/main/Cup-Work-Setup-2.0.0.exe?download=true';
   }
 
   const handleDownload = (e) => {

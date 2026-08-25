@@ -14,11 +14,12 @@ ROOT_DIR = BACKEND_DIR.parent
 DIST_RELEASE_DIR = ROOT_DIR / "dist-release"
 RELEASE_DIR = ROOT_DIR / "release"
 
-# Cloud fallback URL (Google Drive direct download link)
+# Cloud fallback URL (Hugging Face direct CDN download link)
 DEFAULT_CLOUD_DOWNLOAD_URL = os.getenv(
     "WINDOWS_INSTALLER_URL", 
-    "https://drive.google.com/uc?export=download&id=1sMWQ5-md6SBVClYdXE39VyRkFk8eGo5l"
+    "https://huggingface.co/nagireddy5/APP/resolve/main/Cup-Work-Setup-2.0.0.exe?download=true"
 )
+
 
 
 
