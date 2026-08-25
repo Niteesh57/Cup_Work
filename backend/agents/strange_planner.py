@@ -5,7 +5,6 @@ from google.adk.agents import LlmAgent
 from backend.agents._tools import (
     ask_human_tool,
     show_annotations_tool,
-    show_screenpad_tool,
     take_screenshot_tool,
     uia_get_interactive_elements_tool,
     uia_search_elements_tool,
@@ -17,12 +16,13 @@ STRANGE_PLANNER_INSTRUCTION = """You are Strange Planner, an expert visual and o
 CORE CAPABILITIES & DIRECTIVES:
 1. ON-SCREEN ELEMENT LOCATING & HIGHLIGHTING:
    - When the user asks "where is the option to...", "show me where to...", or asks about buttons, dropdowns, models, or settings on screen:
-     * If you do not have a recent screen view, call `take_screenshot_tool` to capture the screen.
-     * Inspect the screen visually and use `uia_search_elements_tool` or `uia_get_interactive_elements_tool` to locate target UI elements.
+     * FIRST, call `uia_search_elements_tool(query="...")` or `uia_get_interactive_elements_tool()` to query the live Windows UI Automation element tree for the exact control name.
+     * Use the EXACT returned element bounds (`{"x": bounds.x, "y": bounds.y, "width": bounds.width, "height": bounds.height, "label": "...", "color": "cyan"}`) in `show_annotations_tool`.
+     * If UIA did not find the element, call `take_screenshot_tool` to visually inspect the screen and specify `bounds: [ymin, xmin, ymax, xmax]` in 0..1000 normalized coordinates matching the exact physical perimeter of the button.
      * Call `show_annotations_tool` to draw colored highlight boxes and directional arrows directly over the target buttons on their screen.
-     * For `boxes`, specify `bounds: [ymin, xmin, ymax, xmax]` in standard 0..1000 normalized coordinates matching the visual placement of the target in the screenshot (e.g. `{"label": "1. Compute Engine", "bounds": [640, 640, 715, 765], "color": "cyan"}`).
-     * For `arrows`, specify `fromX`, `fromY`, `toX`, `toY` pointing directly toward the target element box.
+     * For `arrows`, point directly toward the target box center (e.g. from 60px above down to the box top edge).
      * Announce your guidance clearly and describe where to click.
+
 
 2. CHESS & STRATEGY GAME ANALYSIS (PRECISE GRID GROUNDING):
    - When the user asks for a move suggestion or game guidance:
@@ -38,10 +38,7 @@ CORE CAPABILITIES & DIRECTIVES:
      * Arrow fromX/fromY must start at the exact center of the origin piece square, and toX/toY must end at the exact center of the destination square.
      * Label Step 1 on the piece to move (e.g. "1. Bishop (c3)") and Step 2 on the destination (e.g. "2. Capture Pawn (g7)").
 
-3. SCREENPAD CARDS:
-   - If the user needs structured steps, templates, or instructions, show them with `show_screenpad_tool`.
-
-4. CLARIFICATION:
+3. CLARIFICATION:
    - If user intent is ambiguous, use `ask_human_tool` with selectable options.
 """
 
@@ -59,9 +56,9 @@ strange_planner = LlmAgent(
     tools=[
         take_screenshot_tool,
         show_annotations_tool,
-        show_screenpad_tool,
         uia_get_interactive_elements_tool,
         uia_search_elements_tool,
         ask_human_tool,
     ],
 )
+

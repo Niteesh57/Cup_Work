@@ -192,6 +192,8 @@ export interface ExecutionResponse {
   message:    string;
   steps:      AgentStep[];
   taskId?:    string;
+  activeAgent?: string;
+  agentName?: string;
   userId?:    string;
   deviceId?:  string;
   userName?:  string;

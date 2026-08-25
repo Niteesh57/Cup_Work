@@ -228,10 +228,21 @@ $pHeight = [System.Windows.SystemParameters]::PrimaryScreenHeight
 $screenW = if ($pWidth -gt 0) { $pWidth } else { $vWidth }
 $screenH = if ($pHeight -gt 0) { $pHeight } else { $vHeight }
 
+# Detect Display Scaling Factor (e.g. 1.25 for 125%, 1.5 for 150%)
+$dpiScaleX = 1.0
+$dpiScaleY = 1.0
+try {
+    $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    if ($g.DpiX -gt 0) { $dpiScaleX = [double]$g.DpiX / 96.0 }
+    if ($g.DpiY -gt 0) { $dpiScaleY = [double]$g.DpiY / 96.0 }
+    $g.Dispose()
+} catch {}
+
 $window.Left = $vLeft
 $window.Top = $vTop
 $window.Width = $vWidth
 $window.Height = $vHeight
+
 
 $canvas = $window.FindName("AnnotationCanvas")
 $mainGrid = $window.FindName("MainGrid")
@@ -320,10 +331,10 @@ function Convert-BoxCoordinates($b, $targetW, $targetH, $imgW, $imgH) {
 
     # Check left/top/right/bottom properties
     if ($null -ne $bObj.left -and $null -ne $bObj.top -and ($null -ne $bObj.right -or $null -ne $bObj.bottom)) {
-        $left = [double]$bObj.left
-        $top = [double]$bObj.top
-        $right = if ($null -ne $bObj.right) { [double]$bObj.right } else { $left + 100.0 }
-        $bottom = if ($null -ne $bObj.bottom) { [double]$bObj.bottom } else { $top + 50.0 }
+        $left = [double]$bObj.left / $dpiScaleX
+        $top = [double]$bObj.top / $dpiScaleY
+        $right = if ($null -ne $bObj.right) { [double]$bObj.right / $dpiScaleX } else { $left + 100.0 }
+        $bottom = if ($null -ne $bObj.bottom) { [double]$bObj.bottom / $dpiScaleY } else { $top + 50.0 }
         return @{
             x = $left
             y = $top
@@ -347,11 +358,12 @@ function Convert-BoxCoordinates($b, $targetW, $targetH, $imgW, $imgH) {
         }
     }
 
+    # Raw physical screen pixel bounds (e.g. from UIA or OCR) mapped to WPF DIPs
     return @{
-        x = $rawX
-        y = $rawY
-        width = [Math]::Max(16.0, $rawW)
-        height = [Math]::Max(16.0, $rawH)
+        x = $rawX / $dpiScaleX
+        y = $rawY / $dpiScaleY
+        width = [Math]::Max(16.0, $rawW / $dpiScaleX)
+        height = [Math]::Max(16.0, $rawH / $dpiScaleY)
     }
 }
 
@@ -422,12 +434,14 @@ function Convert-ArrowCoordinates($a, $targetW, $targetH, $imgW, $imgH) {
         }
     }
 
+    # Physical screen pixels converted to WPF DIPs
     return @{
-        fromX = $fx
-        fromY = $fy
-        toX = $tx
-        toY = $ty
+        fromX = $fx / $dpiScaleX
+        fromY = $fy / $dpiScaleY
+        toX = $tx / $dpiScaleX
+        toY = $ty / $dpiScaleY
     }
+
 }
 
 # 1. Render Boxes

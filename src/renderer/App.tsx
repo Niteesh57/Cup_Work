@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentStatus, AgentStep, AppConfig, ExecutionResponse, ExecutorState } from '../shared/types';
 import { VoiceEngine } from './voiceEngine';
-import { Loader2, Mic, MicOff, X, Pause, Play, Square, Presentation, Coffee, ListTodo } from 'lucide-react';
+import { Loader2, Mic, MicOff, X, Pause, Play, Square, Presentation, Coffee, ListTodo, Server, RefreshCw, Trash2 } from 'lucide-react';
+
 import { CommentaryBanner } from './components/CommentaryBanner';
 import { MarkdownView } from './components/MarkdownView';
 import { ToolCallTimeline } from './components/ToolCallTimeline';
@@ -567,7 +568,11 @@ export default function App() {
   /* Backend URL Handlers */
   const handleUpdateBackendUrl = useCallback(async (newUrl: string): Promise<{ success: boolean; connected?: boolean; error?: string }> => {
     try {
-      const res = (await ipc()?.invoke('config:set-backend-url', { backendUrl: newUrl })) as {
+      const cleanUrl = (newUrl || '').trim();
+      if (cleanUrl) {
+        try { localStorage.setItem('hey_jave_backend_url', cleanUrl); } catch {}
+      }
+      const res = (await ipc()?.invoke('config:set-backend-url', { backendUrl: cleanUrl })) as {
         success: boolean;
         connected: boolean;
         backendUrl: string;
@@ -607,6 +612,12 @@ export default function App() {
     const renderer = ipc();
     if (!renderer) return;
 
+    // Check if user has an overridden URL in localStorage
+    const savedLocalUrl = localStorage.getItem('hey_jave_backend_url');
+    if (savedLocalUrl && savedLocalUrl.trim()) {
+      renderer.invoke('config:set-backend-url', { backendUrl: savedLocalUrl.trim() }).catch(() => {});
+    }
+
     renderer.invoke('config:get').then((res) => {
       if (res) {
         const c = res as AppConfig & { backendUrl?: string };
@@ -618,14 +629,21 @@ export default function App() {
 
     const onStep = (_: unknown, data: unknown) => {
       const step = data as AgentStep;
-      if (step.agentName) {
-        setActiveAgent(step.agentName);
+      const params = step.parameters as Record<string, unknown> | undefined;
+      const args = (step as unknown as { args?: Record<string, unknown> })?.args;
+      const transferTarget = (step.actionName === 'transfer_to_agent' || step.actionName === 'transfer_to_agent_tool')
+        ? String(params?.agent_name || args?.agent_name || '')
+        : undefined;
+      const effectiveAgent = transferTarget || step.agentName;
+
+      if (effectiveAgent) {
+        setActiveAgent(effectiveAgent);
       }
       setMessages(prev => prev.map(m =>
         m.role === 'agent' && m.status === 'thinking'
           ? {
             ...m,
-            activeAgent: step.agentName || m.activeAgent || activeAgent,
+            activeAgent: effectiveAgent || m.activeAgent || activeAgent,
             steps: [...(m.steps || []), step]
           }
           : m
@@ -868,7 +886,22 @@ export default function App() {
     }
   }, [userIdentity.userId, userIdentity.deviceId]);
 
+  const handleDeleteMessage = useCallback(async (msgId: string) => {
+    // 1. Instant optimistic deletion from UI
+    setMessages(prev => prev.filter(m => m.id !== msgId));
+    // 2. Persistent deletion from SQLite database
+    try {
+      await ipc()?.invoke('session:delete-message', {
+        id: msgId,
+        userId: userIdentity.userId || 'usr_local',
+      });
+    } catch (err) {
+      console.error('[App] Failed to delete message from session DB:', err);
+    }
+  }, [userIdentity.userId]);
+
   const sendPrompt = useCallback(async (input: string | ExecuteOptions) => {
+
     const opts: ExecuteOptions = typeof input === 'string' ? { prompt: input } : input;
     const trimmed = opts.prompt?.trim() || '';
     if (!trimmed && !opts.audioBase64) return;
@@ -964,12 +997,33 @@ export default function App() {
 
 
       const durationMs = Date.now() - startTime;
+      const returnedSteps = response.steps || [];
+      const stepsCount = returnedSteps.length;
+      const promptTokens = Math.round((trimmed.length || 20) * 1.3 + stepsCount * 380 + 320);
+      const completionTokens = Math.round((response.message?.length || 50) * 0.75 + stepsCount * 120);
+      const resolvedActiveAgent = response.activeAgent || response.agentName || activeAgent || 'root';
 
-      let savedFinalMsg: ChatMessage | null = null;
+      const finalAgentMsg: ChatMessage = {
+        id: agentMsgId,
+        role: 'agent',
+        text: response.message,
+        status: response.success ? 'done' : 'error',
+        activeAgent: resolvedActiveAgent,
+        steps: returnedSteps,
+        spokeVoice: spokeVoiceOutput,
+        hadWhiteboard: hadWhiteboardTool,
+        whiteboardData: extractedWhiteboardData,
+        durationMs,
+        outputTokens: {
+          prompt: promptTokens,
+          completion: completionTokens,
+          total: promptTokens + completionTokens,
+        },
+      };
+
       setMessages(prev => prev.map(m => {
         if (m.id === agentMsgId) {
           const liveSteps = m.steps || [];
-          const returnedSteps = response.steps || [];
           const combinedSteps: AgentStep[] = [...liveSteps];
           for (const s of returnedSteps) {
             const exists = combinedSteps.some(
@@ -980,29 +1034,10 @@ export default function App() {
               combinedSteps.push(s);
             }
           }
-          const finalStepsList = combinedSteps.length > 0 ? combinedSteps : (returnedSteps.length > 0 ? returnedSteps : liveSteps);
-          const stepsCount = finalStepsList.length;
-          const promptTokens = Math.round((trimmed.length || 20) * 1.3 + stepsCount * 380 + 320);
-          const completionTokens = Math.round((response.message?.length || 50) * 0.75 + stepsCount * 120);
-
-          const finalAgentMsg: ChatMessage = {
-            id: agentMsgId,
-            role: 'agent',
-            text: response.message,
-            status: response.success ? 'done' : 'error',
-            steps: finalStepsList,
-            spokeVoice: spokeVoiceOutput,
-            hadWhiteboard: hadWhiteboardTool,
-            whiteboardData: extractedWhiteboardData,
-            durationMs,
-            outputTokens: {
-              prompt: promptTokens,
-              completion: completionTokens,
-              total: promptTokens + completionTokens,
-            },
+          return {
+            ...finalAgentMsg,
+            steps: combinedSteps.length > 0 ? combinedSteps : returnedSteps,
           };
-          savedFinalMsg = finalAgentMsg;
-          return finalAgentMsg;
         }
         return m;
       }));
@@ -1010,13 +1045,12 @@ export default function App() {
       setStatus(response.success ? 'completed' : 'error');
 
       // Persist completed agent message in SQLite daily session
-      if (savedFinalMsg) {
-        void ipc()?.invoke('session:save-message', {
-          ...(savedFinalMsg as ChatMessage),
-          userId: userIdentity.userId || 'usr_local',
-          deviceId: userIdentity.deviceId || 'desktop-main',
-        });
-      }
+      void ipc()?.invoke('session:save-message', {
+        ...finalAgentMsg,
+        userId: userIdentity.userId || 'usr_local',
+        deviceId: userIdentity.deviceId || 'desktop-main',
+      });
+
 
 
     } catch (err) {
@@ -1079,6 +1113,7 @@ export default function App() {
           deviceName={userIdentity.deviceName}
           suggestedUserName={suggestedUserName || userIdentity.userName}
           onRegister={handleRegisterDevice}
+          onOpenSettings={() => setShowSettings(true)}
         />
       ) : showSettings ? (
         <SettingsPage
@@ -1121,6 +1156,15 @@ export default function App() {
                     </span>
                   </div>
                 </div>
+              ) : !backendConnected ? (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="btn btn-xs rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 font-semibold gap-1.5 px-3 transition-all cursor-pointer"
+                  title="Click to configure Python backend server URL"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Connect Server
+                </button>
               ) : null}
             </div>
 
@@ -1194,56 +1238,61 @@ export default function App() {
                 </div>
               )}
 
-
-              {backendConnected && (
-                <div
-                  className="tooltip tooltip-bottom"
-                  data-tip={`Profile & Settings (${userIdentity.userName || 'User'})`}
+              {/* Profile & Settings Button (Always Visible) */}
+              <div
+                className="tooltip tooltip-bottom"
+                data-tip={backendConnected ? `Profile & Settings (${userIdentity.userName || 'User'})` : 'Configure Backend Server URL & Settings'}
+              >
+                <button
+                  className={`btn btn-sm gap-2 rounded-xl text-xs font-semibold shadow-2xs transition-all px-2.5 ${
+                    backendConnected
+                      ? 'btn-ghost text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700'
+                      : 'bg-amber-500/15 text-amber-800 dark:text-amber-200 border border-amber-500/40 hover:bg-amber-500/25'
+                  }`}
+                  onClick={() => setShowSettings(true)}
+                  aria-label="Settings and Profile"
                 >
-                  <button
-                    className="btn btn-sm btn-ghost gap-2 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-semibold shadow-2xs transition-all px-2.5"
-                    onClick={() => setShowSettings(true)}
-                    aria-label="Settings and Profile"
-                  >
-                    <MovingColorsAvatar name={userIdentity.userName || 'You'} size="xs" showGlow={false} />
-                    <span className="hidden sm:inline font-bold">{userIdentity.userName || 'Profile'}</span>
-                  </button>
-                </div>
-              )}
+                  <MovingColorsAvatar name={userIdentity.userName || 'You'} size="xs" showGlow={false} />
+                  <span className="hidden sm:inline font-bold">{userIdentity.userName || 'Settings'}</span>
+                  {!backendConnected && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
+                </button>
+              </div>
 
-
-              {backendConnected && (
-                <div
-                  className="tooltip tooltip-left"
-                  data-tip={
-                    (isTaskRunning && executorState !== 'paused') || inFlightRef.current
+              <div
+                className="tooltip tooltip-left"
+                data-tip={
+                  !backendConnected
+                    ? "Backend offline — click Settings to connect"
+                    : (isTaskRunning && executorState !== 'paused') || inFlightRef.current
                       ? "Agent is busy executing — microphone disabled until complete or paused"
                       : recording
                         ? "Microphone is ON (listening for voice) — click to mute"
                         : "Microphone is OFF — click to activate voice detection"
-                  }
-                >
-                  <button
-                    className={`btn btn-circle btn-sm transition-all ${(isTaskRunning && executorState !== 'paused') || inFlightRef.current
+                }
+              >
+                <button
+                  className={`btn btn-circle btn-sm transition-all ${
+                    !backendConnected
+                      ? 'btn-ghost opacity-40 cursor-not-allowed text-slate-400'
+                      : (isTaskRunning && executorState !== 'paused') || inFlightRef.current
                         ? 'btn-ghost opacity-40 cursor-not-allowed text-slate-400'
                         : recording
                           ? 'btn-success text-white shadow-2xs'
                           : 'btn-ghost text-slate-400 hover:text-slate-700 hover:bg-slate-200'
-                      }`}
-                    onClick={
-                      (isTaskRunning && executorState !== 'paused') || inFlightRef.current
-                        ? undefined
-                        : recording
-                          ? cancelRecording
-                          : startRecording
-                    }
-                    disabled={(isTaskRunning && executorState !== 'paused') || inFlightRef.current}
-                    aria-label={recording ? "Mute microphone" : "Activate microphone"}
-                  >
-                    {recording ? <Mic size={15} /> : <MicOff size={15} />}
-                  </button>
-                </div>
-              )}
+                  }`}
+                  onClick={
+                    !backendConnected || (isTaskRunning && executorState !== 'paused') || inFlightRef.current
+                      ? undefined
+                      : recording
+                        ? cancelRecording
+                        : startRecording
+                  }
+                  disabled={!backendConnected || (isTaskRunning && executorState !== 'paused') || inFlightRef.current}
+                  aria-label={recording ? "Mute microphone" : "Activate microphone"}
+                >
+                  {recording ? <Mic size={15} /> : <MicOff size={15} />}
+                </button>
+              </div>
             </div>
           </header>
 
@@ -1265,10 +1314,29 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <h3>Waiting for Brain Connection…</h3>
-                    <p className="text-slate-400">
-                      Python Brain server is offline. Please launch backend to start Cup Work.
+                    <h3>Backend Disconnected</h3>
+                    <p className="text-zinc-500 dark:text-zinc-400 max-w-md mx-auto text-xs leading-relaxed">
+                      Connect to your Cloud Run or local Python Brain server to enable voice control, screen vision, and desktop automation.
                     </p>
+                    <div className="mt-4 flex items-center justify-center gap-3">
+                      <button
+                        className="btn btn-primary btn-sm rounded-xl gap-2 font-semibold shadow-xs"
+                        onClick={() => setShowSettings(true)}
+                      >
+                        <Server size={14} />
+                        Configure Backend URL
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm border border-zinc-300 dark:border-zinc-700 rounded-xl gap-1.5 text-xs"
+                        onClick={() => {
+                          fetchConfig();
+                          checkDeviceRegistration();
+                        }}
+                      >
+                        <RefreshCw size={13} />
+                        Retry
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -1299,13 +1367,21 @@ export default function App() {
                 </div>
                 {messages.map(msg =>
                   msg.role === 'user'
-                    ? <UserMessage key={msg.id} text={msg.text || ''} isVoice={msg.isVoice} userName={userIdentity.userName} />
+                    ? <UserMessage
+                        key={msg.id}
+                        id={msg.id}
+                        text={msg.text || ''}
+                        isVoice={msg.isVoice}
+                        userName={userIdentity.userName}
+                        onDelete={handleDeleteMessage}
+                      />
                     : <AgentMessage
-                      key={msg.id}
-                      msg={msg}
-                      isPaused={executorState === 'paused'}
-                      onSelectHitlOption={handleSelectHitlOption}
-                    />
+                        key={msg.id}
+                        msg={msg}
+                        isPaused={executorState === 'paused'}
+                        onSelectHitlOption={handleSelectHitlOption}
+                        onDelete={handleDeleteMessage}
+                      />
                 )}
               </>
             )}
@@ -1418,49 +1494,75 @@ export default function App() {
 }
 
 /* ── Sub-components ─────────────────────────────────────────── */
-function UserMessage({ text, isVoice, userName }: { text?: string; isVoice?: boolean; userName?: string }) {
+function UserMessage({ 
+  id,
+  text, 
+  isVoice, 
+  userName,
+  onDelete,
+}: { 
+  id?: string;
+  text?: string; 
+  isVoice?: boolean; 
+  userName?: string;
+  onDelete?: (id: string) => void;
+}) {
   return (
-    <div className="message-row">
+    <div className="message-row group relative">
       <div className="msg-avatar user overflow-hidden p-0 border-0">
         <MovingColorsAvatar name={userName || 'You'} size="sm" showGlow={false} />
       </div>
-      <div className="msg-body">
-        <div className="msg-label">{userName || 'You'}</div>
-        {isVoice ? (
+      <div className="msg-body space-y-1 w-full">
+        <div className="msg-label flex items-center justify-between gap-2">
+          <span>{userName || 'You'}</span>
+          {id && onDelete && (
+            <button
+              onClick={() => onDelete(id)}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+              title="Delete message"
+              aria-label="Delete message"
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
+        {text && <div className="msg-text">{text}</div>}
+        {isVoice && (
           <div
             className="msg-text voice-command-badge"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 8,
-              padding: '6px 14px',
-              borderRadius: 16,
+              gap: 6,
+              padding: '4px 10px',
+              borderRadius: 12,
               background: 'rgba(251, 188, 4, 0.12)',
               border: '1px solid rgba(251, 188, 4, 0.3)',
               color: '#fbbc04',
-              fontSize: 13,
-              fontWeight: 500,
+              fontSize: 11,
+              fontWeight: 600,
             }}
           >
-            <Mic size={14} style={{ flexShrink: 0 }} />
+            <Mic size={12} style={{ flexShrink: 0 }} />
             <span>Voice Command</span>
           </div>
-        ) : (
-          <div className="msg-text">{text}</div>
         )}
       </div>
     </div>
   );
 }
 
+
 function AgentMessage({
   msg,
   isPaused,
   onSelectHitlOption,
+  onDelete,
 }: {
   msg: ChatMessage;
   isPaused?: boolean;
   onSelectHitlOption?: (hitlId: string, taskId: string, option: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const isThinking = msg.status === 'thinking';
   const isError = msg.status === 'error';
@@ -1469,7 +1571,7 @@ function AgentMessage({
 
 
   return (
-    <div className="message-row">
+    <div className="message-row group relative">
       <div className="msg-avatar agent flex items-center justify-center overflow-hidden">
         {isThinking
           ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
@@ -1477,12 +1579,24 @@ function AgentMessage({
         }
       </div>
       <div className="msg-body w-full">
-        <div className="msg-label flex items-center gap-2">
-          <span>Cup Work</span>
-          {msg.durationMs && msg.durationMs > 0 && (
-            <span className="badge badge-xs badge-ghost font-mono text-[10px] text-slate-400">
-              {(msg.durationMs / 1000).toFixed(1)}s
-            </span>
+        <div className="msg-label flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span>Cup Work</span>
+            {msg.durationMs && msg.durationMs > 0 && (
+              <span className="badge badge-xs badge-ghost font-mono text-[10px] text-slate-400">
+                {(msg.durationMs / 1000).toFixed(1)}s
+              </span>
+            )}
+          </div>
+          {msg.id && onDelete && !isThinking && (
+            <button
+              onClick={() => onDelete(msg.id!)}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+              title="Delete message"
+              aria-label="Delete message"
+            >
+              <Trash2 size={12} />
+            </button>
           )}
         </div>
 

@@ -15,7 +15,11 @@ from backend.events.commentary import commentary_translator
 from backend.api import api_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.getLogger("opentelemetry").setLevel(logging.CRITICAL)
+logging.getLogger("opentelemetry.context").setLevel(logging.CRITICAL)
+logging.getLogger("opentelemetry.trace").setLevel(logging.CRITICAL)
 logger = logging.getLogger("cup_work.server")
+
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = ROOT_DIR / "public"
@@ -56,11 +60,23 @@ async def serve_landing_page():
         "service": "Cup Work Brain Server v2.0",
         "endpoints": {
             "api": "/api",
+            "avatar": "/avatar",
             "download_windows": "/api/download/windows",
             "download_info": "/api/download/info",
-            "websocket": "/ws"
-        }
+            "websocket": "/ws",
+        },
     }
+
+@app.get("/avatar")
+async def serve_avatar_page():
+    avatar_file = PUBLIC_DIR / "avatar.html"
+    if avatar_file.exists():
+        return FileResponse(str(avatar_file))
+    root_avatar = ROOT_DIR / "cup_work_avatar.html"
+    if root_avatar.exists():
+        return FileResponse(str(root_avatar))
+    return {"error": "Avatar HTML not found"}
+
 
 @app.get("/style.css")
 @app.get("/landing/style.css")

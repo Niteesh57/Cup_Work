@@ -21,7 +21,7 @@ async def get_today_session(
         user_id=userId,
         device_id=deviceId,
         date_str=dateStr,
-    )
+    ) or []
     dt = dateStr or time.strftime("%Y-%m-%d")
     return {
         "success": True,
@@ -31,6 +31,7 @@ async def get_today_session(
         "count": len(messages),
         "messages": messages,
     }
+
 
 
 @router.post("/api/session/save-message")
@@ -75,8 +76,21 @@ async def save_session_message(data: Dict[str, Any] = Body(...)):
     return {"success": True, "id": saved_id}
 
 
+@router.post("/api/session/delete-message")
+@router.delete("/api/session/message/{msg_id}")
+async def delete_session_message(msg_id: Optional[str] = None, data: Optional[Dict[str, Any]] = Body(None)):
+    """Deletes a specific chat message from the persistent database."""
+    target_id = msg_id or (data.get("id") if data else None)
+    user_id = data.get("userId") if data else None
+    if not target_id:
+        return {"success": False, "error": "Message ID required"}
+    memory_manager.delete_chat_message(msg_id=target_id, user_id=user_id)
+    return {"success": True, "id": target_id}
+
+
 @router.post("/api/session/clear-today")
 async def clear_today_session(data: Dict[str, Any] = Body(...)):
+
     user_id = str(data.get("userId") or "default")
     device_id = data.get("deviceId")
     date_str = data.get("dateStr")

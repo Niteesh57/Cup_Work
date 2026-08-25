@@ -148,17 +148,25 @@ class ElectronBridge:
             await self.broadcast(msg, target_device_id=target_device, task_id=task_id)
 
             try:
-                timeout = (config.UIA_TIMEOUT_MS / 1000.0) + 15.0 # extra buffer for complex UI ops
+                if tool_name in ("draw_whiteboard_lecture", "draw_whiteboard_lecture_tool"):
+                    steps_list = args.get("steps", []) if isinstance(args.get("steps"), list) else []
+                    timeout = max(180.0, float(len(steps_list) * 35.0 + 30.0))
+                elif tool_name in ("execute_command", "smart_ui_action", "draw_mermaid_diagram"):
+                    timeout = 90.0
+                else:
+                    timeout = (config.UIA_TIMEOUT_MS / 1000.0) + 20.0 # extra buffer for UI ops
+
                 result = await asyncio.wait_for(future, timeout=timeout)
                 return result if isinstance(result, dict) else {"success": True, "result": result}
             except asyncio.TimeoutError:
                 self._pending_requests.pop(req_id, None)
-                logger.error(f"Tool execution timed out for {tool_name} (req={req_id})")
+                logger.error(f"Tool execution timed out for {tool_name} (req={req_id}, timeout={timeout}s)")
                 return {"success": False, "error": f"Tool execution timed out after {timeout}s"}
             except Exception as e:
                 self._pending_requests.pop(req_id, None)
                 logger.error(f"Tool execution error for {tool_name}: {e}")
                 return {"success": False, "error": str(e)}
+
 
         # Fail closed for browser and local resolution tools
         if tool_name in ("smart_ui_action", "resolve_element") or tool_name.startswith("browser_"):

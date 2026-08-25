@@ -197,7 +197,11 @@ class MemoryManager:
     ) -> List[Dict[str, Any]]:
         return self.store.get_today_chat_messages(user_id=user_id, device_id=device_id, date_str=date_str)
 
+    def delete_chat_message(self, msg_id: str, user_id: Optional[str] = None) -> bool:
+        return self.store.delete_chat_message(msg_id=msg_id, user_id=user_id)
+
     def clear_today_chat_messages(
+
         self,
         user_id: str,
         device_id: Optional[str] = None,

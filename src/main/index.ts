@@ -36,10 +36,63 @@ const envPath = [
 ].find((p) => fs.existsSync(p)) || path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
-import { stopAllTts, speakTextNative, streamGeminiTts } from './tts';
+import { stopAllTts, speakTextNative, streamGeminiTts, setTtsBackendUrl } from './tts';
 
-const BACKEND_HTTP = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765';
-const BACKEND_WS = process.env.PYTHON_BACKEND_WS || `${BACKEND_HTTP.replace(/^http/, 'ws')}/ws`;
+function getSavedBackendUrl(): string {
+  try {
+    const configPath = path.join(app.getPath('userData'), 'user_settings.json');
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (parsed?.backendUrl && typeof parsed.backendUrl === 'string' && parsed.backendUrl.trim()) {
+        return parsed.backendUrl.trim().replace(/\/+$/, '');
+      }
+    }
+  } catch {}
+  const envUrl = process.env.PYTHON_BACKEND_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  return 'http://127.0.0.1:8765';
+}
+
+function saveBackendUrl(url: string) {
+  try {
+    const configPath = path.join(app.getPath('userData'), 'user_settings.json');
+    let data: Record<string, unknown> = {};
+    if (fs.existsSync(configPath)) {
+      try { data = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
+    }
+    data.backendUrl = url;
+    fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('[Main] Failed to save backendUrl to user_settings.json:', e);
+  }
+}
+
+function computeWsUrl(httpUrl: string): string {
+  const norm = (httpUrl || '').trim().replace(/\/+$/, '');
+  if (norm.startsWith('https://')) {
+    return norm.replace(/^https:\/\//, 'wss://') + '/ws';
+  }
+  return norm.replace(/^http:\/\//, 'ws://') + '/ws';
+}
+
+let activeBackendHttp = getSavedBackendUrl();
+let activeBackendWs = computeWsUrl(activeBackendHttp);
+setTtsBackendUrl(activeBackendHttp);
+
+export function getActiveBackendHttp(): string {
+  return activeBackendHttp;
+}
+
+export function setActiveBackendUrl(newUrl: string): void {
+  activeBackendHttp = (newUrl || 'http://127.0.0.1:8765').trim().replace(/\/+$/, '');
+  activeBackendWs = computeWsUrl(activeBackendHttp);
+  setTtsBackendUrl(activeBackendHttp);
+  saveBackendUrl(activeBackendHttp);
+  console.log(`[Main] Switched Backend URL: ${activeBackendHttp} (WS: ${activeBackendWs})`);
+  connectWebSocket();
+}
 
 let mainWindow: BrowserWindow | null = null;
 let savedWindowBounds: { x: number; y: number; width: number; height: number } | null = null;
@@ -122,8 +175,8 @@ function connectWebSocket() {
   }
 
   try {
-    console.log(`[Main] Connecting to Python backend WS: ${BACKEND_WS}`);
-    const client = new WebSocket(BACKEND_WS);
+    console.log(`[Main] Connecting to Python backend WS: ${activeBackendWs}`);
+    const client = new WebSocket(activeBackendWs);
     wsClient = client;
 
     client.on('open', () => {
@@ -400,54 +453,48 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// ── Robust HTTP Client for Long-Running Agent Tasks (No 5-min timeout) ───────
-function postJsonToBackend<T>(endpoint: string, payload: unknown, timeoutMs = 1200000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(endpoint, BACKEND_HTTP);
-    const data = JSON.stringify(payload);
-    const req = http.request(
-      url,
-      {
+// ── Robust HTTP Client for Long-Running Agent Tasks (Supports HTTP and HTTPS with Auto-Retry) ───
+async function postJsonToBackend<T>(endpoint: string, payload: unknown, timeoutMs = 1200000, maxRetries = 3): Promise<T> {
+  const normEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${activeBackendHttp}${normEndpoint}`;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`Python Brain request timed out after ${timeoutMs / 1000}s`)), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(data),
-          'Connection': 'keep-alive',
         },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        let body = '';
-        res.setEncoding('utf8');
-        res.on('data', (chunk) => {
-          body += chunk;
-        });
-        res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              resolve(JSON.parse(body) as T);
-            } catch {
-              reject(new Error(`Invalid JSON response from backend: ${body.slice(0, 200)}`));
-            }
-          } else {
-            reject(new Error(`Python backend returned HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
-          }
-        });
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Python backend returned HTTP ${res.status}: ${errText.slice(0, 200)}`);
       }
-    );
 
-    req.on('timeout', () => {
-      req.destroy(new Error(`Python Brain request timed out after ${timeoutMs / 1000}s`));
-    });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-
-    req.write(data);
-    req.end();
-  });
+      const data = await res.json();
+      return data as T;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isConnError = msg.includes('fetch failed') || msg.includes('ECONNREFUSED') || msg.includes('ECONNRESET');
+      if (isConnError && attempt < maxRetries) {
+        console.warn(`[postJsonToBackend] Attempt ${attempt} failed with "${msg}", retrying in 1.5s...`);
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error(`Failed to connect to Python backend at ${url} after ${maxRetries} attempts.`);
 }
+
 
 // ── IPC: Execute Prompt (Routed to Python Agent Brain) ────────────────────────
 ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string; audioBase64?: string; mimeType?: string; apiKey?: string; model?: string; taskId?: string; userId?: string; deviceId?: string; deviceName?: string }) => {
@@ -483,6 +530,8 @@ ipcMain.handle('agent:execute-prompt', async (_event, request: { prompt?: string
       success: data.success,
       message: data.message,
       steps: data.steps || [],
+      activeAgent: data.activeAgent || data.agentName,
+      agentName: data.agentName || data.activeAgent,
       whiteboardData: data.whiteboardData,
       hadWhiteboard: data.hadWhiteboard,
       error: data.error,
@@ -506,7 +555,7 @@ ipcMain.handle('voice:transcribe', async (_event, { audioBase64, mimeType }: { a
   }
 
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/voice/transcribe`, {
+    const res = await fetch(`${activeBackendHttp}/api/voice/transcribe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audioBase64, mimeType }),
@@ -528,7 +577,7 @@ ipcMain.handle('voice:transcribe', async (_event, { audioBase64, mimeType }: { a
 // ── IPC: List Models ──────────────────────────────────────────────────────────
 ipcMain.handle('gemini:list-models', async (_event, apiKey?: string) => {
   try {
-    const url = apiKey ? `${BACKEND_HTTP}/api/models?apiKey=${encodeURIComponent(apiKey)}` : `${BACKEND_HTTP}/api/models`;
+    const url = apiKey ? `${activeBackendHttp}/api/models?apiKey=${encodeURIComponent(apiKey)}` : `${activeBackendHttp}/api/models`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json() as { models: Array<{ id: string; displayName: string }>; error?: string };
@@ -583,25 +632,25 @@ ipcMain.handle('window:restore', () => {
 // ── IPC: Configuration Management (Routed to Python Backend & .env) ───────────
 ipcMain.handle('config:get', async () => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/config`);
+    const res = await fetch(`${activeBackendHttp}/api/config`, { signal: AbortSignal.timeout(3500) });
     if (res.ok) {
       const data = (await res.json()) as Record<string, unknown>;
       return {
         ...data,
         backendConnected: true,
         geminiVoice: process.env.GEMINI_VOICE || 'Puck',
-        backendUrl: BACKEND_HTTP,
+        backendUrl: activeBackendHttp,
       };
     }
   } catch (e) {
-    console.warn('[config:get] Backend not reachable yet');
+    console.warn('[config:get] Backend not reachable at', activeBackendHttp);
   }
 
   return {
     backendConnected: false,
     geminiModel: '',
     geminiVoice: process.env.GEMINI_VOICE || 'Puck',
-    backendUrl: BACKEND_HTTP,
+    backendUrl: activeBackendHttp,
   };
 });
 
@@ -615,7 +664,7 @@ ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>)
     process.env.GEMINI_VOICE = newConfig.geminiVoice;
   }
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/config`, {
+    const res = await fetch(`${activeBackendHttp}/api/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newConfig),
@@ -630,7 +679,7 @@ ipcMain.handle('config:save', async (_event, newConfig: Record<string, unknown>)
 // ── IPC: User Identity & Profile (Supports modifying ONLY name) ───────────────
 ipcMain.handle('device:check-status', async () => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/device/status?deviceId=${encodeURIComponent(localDeviceId)}`);
+    const res = await fetch(`${activeBackendHttp}/api/device/status?deviceId=${encodeURIComponent(localDeviceId)}`, { signal: AbortSignal.timeout(4000) });
     if (!res.ok) return { success: false, registered: false, deviceId: localDeviceId, deviceName: localDeviceName };
     const data = (await res.json()) as {
       registered: boolean;
@@ -661,7 +710,7 @@ ipcMain.handle('device:check-status', async () => {
 
 ipcMain.handle('device:register', async (_event, customName?: string) => {
   try {
-    const regRes = await fetch(`${BACKEND_HTTP}/api/device/register`, {
+    const regRes = await fetch(`${activeBackendHttp}/api/device/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -678,7 +727,7 @@ ipcMain.handle('device:register', async (_event, customName?: string) => {
     };
 
     if (customName && customName.trim() && customName.trim() !== identity.userName) {
-      await fetch(`${BACKEND_HTTP}/api/user/profile`, {
+      await fetch(`${activeBackendHttp}/api/user/profile`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: identity.userId, name: customName.trim() }),
@@ -693,7 +742,7 @@ ipcMain.handle('device:register', async (_event, customName?: string) => {
 
 ipcMain.handle('user:get-profile', async (_event, userId?: string) => {
   try {
-    const regRes = await fetch(`${BACKEND_HTTP}/api/device/register`, {
+    const regRes = await fetch(`${activeBackendHttp}/api/device/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -711,7 +760,7 @@ ipcMain.handle('user:get-profile', async (_event, userId?: string) => {
       isNewUser?: boolean;
     };
 
-    const profRes = await fetch(`${BACKEND_HTTP}/api/user/profile?userId=${encodeURIComponent(identity.userId)}`);
+    const profRes = await fetch(`${activeBackendHttp}/api/user/profile?userId=${encodeURIComponent(identity.userId)}`);
     const profData = profRes.ok
       ? ((await profRes.json()) as { success: boolean; profile: Record<string, unknown> })
       : { success: true, profile: {} };
@@ -739,7 +788,7 @@ ipcMain.handle('user:get-profile', async (_event, userId?: string) => {
 
 ipcMain.handle('user:update-name', async (_event, { userId, name }: { userId: string; name: string }) => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/user/profile`, {
+    const res = await fetch(`${activeBackendHttp}/api/user/profile`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, name }),
@@ -758,7 +807,7 @@ async function postTaskAction(action: string, taskId?: string): Promise<{ succes
     return { success: false, message: 'No active task ID provided.' };
   }
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/agent/${action}/${encodeURIComponent(taskId.trim())}`, {
+    const res = await fetch(`${activeBackendHttp}/api/agent/${action}/${encodeURIComponent(taskId.trim())}`, {
       method: 'POST',
     });
     if (!res.ok) {
@@ -840,7 +889,7 @@ ipcMain.handle('session:get-today', async (_event, payload?: { userId?: string; 
     const uid = encodeURIComponent(payload?.userId || 'usr_local');
     const did = encodeURIComponent(payload?.deviceId || localDeviceId);
     const dateParam = payload?.dateStr ? `&dateStr=${encodeURIComponent(payload.dateStr)}` : '';
-    const res = await fetch(`${BACKEND_HTTP}/api/session/today?userId=${uid}&deviceId=${did}${dateParam}`);
+    const res = await fetch(`${activeBackendHttp}/api/session/today?userId=${uid}&deviceId=${did}${dateParam}`);
     if (!res.ok) {
       return { success: false, messages: [] };
     }
@@ -858,7 +907,7 @@ ipcMain.handle('session:save-message', async (_event, messagePayload: Record<str
       deviceId: localDeviceId,
       ...messagePayload,
     };
-    const res = await fetch(`${BACKEND_HTTP}/api/session/save-message`, {
+    const res = await fetch(`${activeBackendHttp}/api/session/save-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -874,9 +923,31 @@ ipcMain.handle('session:save-message', async (_event, messagePayload: Record<str
   }
 });
 
+ipcMain.handle('session:delete-message', async (_event, payload: { id: string; userId?: string }) => {
+  try {
+    const res = await fetch(`${activeBackendHttp}/api/session/delete-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: payload.id,
+        userId: payload.userId || 'usr_local',
+        deviceId: localDeviceId,
+      }),
+    });
+    if (!res.ok) {
+      return { success: false };
+    }
+    return await res.json();
+  } catch (err: unknown) {
+    console.error('[session:delete-message] Error:', err);
+    return { success: false, error: String(err) };
+  }
+});
+
+
 ipcMain.handle('session:clear-today', async (_event, payload?: { userId?: string; deviceId?: string }) => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/session/clear-today`, {
+    const res = await fetch(`${activeBackendHttp}/api/session/clear-today`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -893,7 +964,7 @@ ipcMain.handle('session:clear-today', async (_event, payload?: { userId?: string
 
 ipcMain.handle('session:start-new-cup', async (_event, payload?: { userId?: string; deviceId?: string; dateStr?: string }) => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/session/start-new-cup`, {
+    const res = await fetch(`${activeBackendHttp}/api/session/start-new-cup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -914,7 +985,7 @@ ipcMain.handle('todos:get-today', async (_event, payload?: { userId?: string; de
   try {
     const uid = encodeURIComponent(payload?.userId || 'usr_local');
     const did = encodeURIComponent(payload?.deviceId || localDeviceId);
-    const res = await fetch(`${BACKEND_HTTP}/api/todos/today?userId=${uid}&deviceId=${did}`);
+    const res = await fetch(`${activeBackendHttp}/api/todos/today?userId=${uid}&deviceId=${did}`);
     if (!res.ok) return { success: false, counts: { total: 0, pending: 0, done: 0 }, tasks: [] };
     const data = await res.json();
     return data;
@@ -926,7 +997,7 @@ ipcMain.handle('todos:get-today', async (_event, payload?: { userId?: string; de
 
 ipcMain.handle('todos:toggle', async (_event, payload: { taskId: string; userId?: string; status?: string }) => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/todos/toggle`, {
+    const res = await fetch(`${activeBackendHttp}/api/todos/toggle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -947,7 +1018,7 @@ ipcMain.handle('todos:toggle', async (_event, payload: { taskId: string; userId?
 
 ipcMain.handle('todos:create', async (_event, payload: { title: string; priority?: string; description?: string; userId?: string }) => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/todos`, {
+    const res = await fetch(`${activeBackendHttp}/api/todos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -969,7 +1040,7 @@ ipcMain.handle('todos:create', async (_event, payload: { title: string; priority
 
 ipcMain.handle('todos:clear-today', async (_event, payload?: { userId?: string; deviceId?: string }) => {
   try {
-    const res = await fetch(`${BACKEND_HTTP}/api/todos/clear-today`, {
+    const res = await fetch(`${activeBackendHttp}/api/todos/clear-today`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -989,7 +1060,7 @@ ipcMain.handle('todos:clear-today', async (_event, payload?: { userId?: string; 
 // ── Configuration & Backend URL IPC Handlers ─────────────────────────────────
 ipcMain.handle('config:get-backend-url', async () => {
   return {
-    backendUrl: BACKEND_HTTP,
+    backendUrl: activeBackendHttp,
     defaultUrl: 'http://127.0.0.1:8765',
     connected: Boolean(wsClient && wsClient.readyState === WebSocket.OPEN),
   };
@@ -997,12 +1068,17 @@ ipcMain.handle('config:get-backend-url', async () => {
 
 ipcMain.handle('config:set-backend-url', async (_event, payload: { backendUrl: string }) => {
   try {
-    const cleanUrl = (payload?.backendUrl || '').trim().replace(/\/+$/, '');
+    let cleanUrl = (payload?.backendUrl || '').trim().replace(/\/+$/, '');
     if (!cleanUrl) {
-      return { success: false, error: 'Invalid URL', connected: false, backendUrl: BACKEND_HTTP };
+      cleanUrl = 'http://127.0.0.1:8765';
     }
-    const testRes = await fetch(`${cleanUrl}/health`).catch(() => null);
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+    setActiveBackendUrl(cleanUrl);
+    const testRes = await fetch(`${cleanUrl}/health`, { signal: AbortSignal.timeout(4000) }).catch(() => null);
     const connected = Boolean(testRes && testRes.ok);
+    mainWindow?.webContents.send('backend:status', { connected, backendUrl: cleanUrl });
     return {
       success: true,
       connected,
@@ -1013,7 +1089,7 @@ ipcMain.handle('config:set-backend-url', async (_event, payload: { backendUrl: s
     return {
       success: false,
       connected: false,
-      backendUrl: BACKEND_HTTP,
+      backendUrl: activeBackendHttp,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -1021,8 +1097,11 @@ ipcMain.handle('config:set-backend-url', async (_event, payload: { backendUrl: s
 
 ipcMain.handle('config:test-backend-url', async (_event, testUrl: string) => {
   try {
-    const cleanUrl = (testUrl || '').trim().replace(/\/+$/, '');
-    const res = await fetch(`${cleanUrl}/health`);
+    let cleanUrl = (testUrl || '').trim().replace(/\/+$/, '');
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+    const res = await fetch(`${cleanUrl}/health`, { signal: AbortSignal.timeout(4500) });
     if (res.ok) {
       return { success: true, message: 'Backend connected successfully!' };
     }

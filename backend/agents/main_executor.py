@@ -307,17 +307,32 @@ class MainExecutorAgent:
                     contents.append(types.Content(role="user", parts=[types.Part.from_text(text="Proceed with the next step.")]))
 
                 def _call_model():
-                    return client.models.generate_content(
-                        model=model_name,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_instruction,
-                            tools=tools,
-                            temperature=0.2,
-                        ),
-                    )
+                    last_err = None
+                    for attempt in range(2):
+                        try:
+                            return client.models.generate_content(
+                                model=model_name,
+                                contents=contents,
+                                config=types.GenerateContentConfig(
+                                    system_instruction=system_instruction,
+                                    tools=tools,
+                                    temperature=0.2,
+                                ),
+                            )
+                        except Exception as err:
+                            last_err = err
+                            err_str = str(err)
+                            if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower()) and attempt < 3:
+                                wait_sec = (attempt + 1) * 5
+                                logger.warning(f"Rate limit 429 encountered, retrying in {wait_sec}s (attempt {attempt + 1}/4)...")
+                                time.sleep(wait_sec)
+                                continue
+                            raise err
+                    if last_err:
+                        raise last_err
 
                 response = await asyncio.to_thread(_call_model)
+
                 candidate = response.candidates[0] if response.candidates else None
                 if not candidate or not candidate.content:
                     final_text = "Task complete."

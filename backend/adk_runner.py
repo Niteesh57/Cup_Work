@@ -164,6 +164,7 @@ class AdkRunner:
             "activeAgent": "root",
         })
 
+        last_author = "root"
         try:
             async for event in self._runner.run_async(
                 user_id=user_id,
@@ -176,6 +177,8 @@ class AdkRunner:
                         "success": False,
                         "message": "Task cancelled by user.",
                         "taskId": session_id,
+                        "activeAgent": last_author,
+                        "agentName": last_author,
                         "steps": executed_steps,
                         "events": events,
                     }
@@ -185,6 +188,8 @@ class AdkRunner:
                         "success": False,
                         "message": "Task cancelled by user.",
                         "taskId": session_id,
+                        "activeAgent": last_author,
+                        "agentName": last_author,
                         "steps": executed_steps,
                         "events": events,
                     }
@@ -194,6 +199,7 @@ class AdkRunner:
                 # Broadcast active agent taking charge & state change
                 author = event.author or "root"
                 if author != "user":
+                    last_author = author
                     has_tools = False
                     thought_text = ""
                     if event.content and event.content.parts:
@@ -210,6 +216,9 @@ class AdkRunner:
                                         clean_args[k] = f"[base64 payload {len(v)} chars]"
                                     else:
                                         clean_args[k] = v
+
+                                if fc.name == "transfer_to_agent" and raw_args.get("agent_name"):
+                                    last_author = str(raw_args.get("agent_name"))
 
                                 if fc.name in ("draw_whiteboard_lecture", "draw_whiteboard_step", "draw_whiteboard_lecture_tool", "draw_whiteboard_step_tool", "draw_mermaid_diagram"):
                                     whiteboard_data = raw_args
@@ -229,14 +238,14 @@ class AdkRunner:
                                     "type": "AGENT_STEP_UPDATE",
                                     "taskId": session_id,
                                     "step": step_dict,
-                                    "activeAgent": author,
+                                    "activeAgent": last_author or author,
                                 })
 
                     await electron_bridge.broadcast({
                         "type": "STATE_CHANGE",
                         "taskId": session_id,
-                        "activeAgent": author,
-                        "agentName": author,
+                        "activeAgent": last_author or author,
+                        "agentName": last_author or author,
                         "state": "acting" if has_tools else "planning",
                     })
 
@@ -245,6 +254,8 @@ class AdkRunner:
                     if text and event.author not in ("user",):
                         agent_texts.append(text)
                         final_text = text
+                        if event.author:
+                            last_author = event.author
 
             if not final_text and agent_texts:
                 final_text = agent_texts[-1]
@@ -276,15 +287,35 @@ class AdkRunner:
                 if not any(es.get("id") == sub_s.get("id") and sub_s.get("id") for es in combined_steps):
                     combined_steps.append(sub_s)
 
+            # Auto-persist agent message directly to daily_chat_messages in SQLite
+            try:
+                memory_manager.save_chat_message(
+                    msg_id=f"a-{session_id}",
+                    user_id=user_id,
+                    device_id=device_id,
+                    role="agent",
+                    text=final_msg,
+                    status="done",
+                    steps=combined_steps,
+                    whiteboard_data=whiteboard_data,
+                    had_whiteboard=bool(whiteboard_data),
+                    spoke_voice=False,
+                )
+            except Exception as se:
+                logger.warning(f"Failed to auto-persist agent chat message: {se}")
+
             return {
                 "success": True,
                 "message": final_msg,
                 "taskId": session_id,
+                "activeAgent": last_author,
+                "agentName": last_author,
                 "steps": combined_steps,
                 "whiteboardData": whiteboard_data,
                 "hadWhiteboard": bool(whiteboard_data),
                 "events": events,
             }
+
         finally:
             executor_manager.remove(session_id)
 

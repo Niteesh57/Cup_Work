@@ -19,8 +19,9 @@ import { speakTextNative, stopAllTts, streamGeminiTts } from '../tts';
 
 export class UiaBridge {
 
-
+  private activeLectureId = 0;
   private scriptPath: string;
+
 
   constructor() {
     // Robust multi-path resolution for uia-engine.ps1
@@ -694,13 +695,19 @@ export class UiaBridge {
       case 'speak_sync':
         return (await this.speakSync(String(args.text || ''))) as unknown as Record<string, unknown>;
       case 'draw_whiteboard_lecture': {
+        const myLectureId = ++this.activeLectureId;
+        stopAllTts();
         closeScreenPad();
         const conceptTitle = String(args.conceptTitle || 'Concept');
         const steps = Array.isArray(args.steps) ? (args.steps as Array<Record<string, unknown>>) : [];
         const delaySec = typeof args.stepDelaySeconds === 'number' ? args.stepDelaySeconds : 1.5;
 
-
         for (let i = 0; i < steps.length; i++) {
+          if (this.activeLectureId !== myLectureId) {
+            console.log(`[WhiteboardLecture] Lecture ${myLectureId} superseded by new lecture ${this.activeLectureId}, stopping.`);
+            return { success: false, message: 'Superceded by newer whiteboard lecture' };
+          }
+
           const stepData = { ...steps[i] };
           stepData.conceptTitle = stepData.conceptTitle || conceptTitle;
           stepData.totalSteps = stepData.totalSteps || stepData.total_steps || steps.length;
@@ -725,6 +732,10 @@ export class UiaBridge {
             await new Promise((r) => setTimeout(r, 2500));
           }
 
+          if (this.activeLectureId !== myLectureId) {
+            return { success: false, message: 'Superceded by newer whiteboard lecture' };
+          }
+
           // 3. Pause between stages before gliding camera to next step
           if (i < steps.length - 1) {
             await new Promise((r) => setTimeout(r, Math.max(500, delaySec * 1000)));
@@ -735,6 +746,7 @@ export class UiaBridge {
       }
 
       case 'draw_whiteboard_step': {
+        this.activeLectureId++;
         showWhiteboardStep(args);
         const narration = String(args.narration || '');
         if (narration.trim()) {
@@ -745,6 +757,7 @@ export class UiaBridge {
       }
 
       case 'draw_mermaid_diagram': {
+        this.activeLectureId++;
         showWhiteboardDiagram(args);
         const narration = String(args.narration || '');
         if (narration.trim()) {
@@ -764,13 +777,18 @@ export class UiaBridge {
       }
 
       case 'clear_whiteboard': {
+        this.activeLectureId++;
+        stopAllTts();
         clearWhiteboard();
         return { success: true, message: `Cleared whiteboard` };
       }
       case 'close_whiteboard': {
+        this.activeLectureId++;
+        stopAllTts();
         closeWhiteboard();
         return { success: true, message: `Closed whiteboard overlay` };
       }
+
 
       default:
         throw new Error(`Unrecognized tool call in UiaBridge: ${name}`);

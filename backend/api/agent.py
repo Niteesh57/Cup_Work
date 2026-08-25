@@ -35,6 +35,21 @@ async def execute_chat(req: ChatRequest):
     if not req.prompt and not has_audio:
         raise HTTPException(status_code=400, detail="Either prompt or audioBase64 must be provided.")
 
+    # Auto-persist user prompt directly to daily_chat_messages in SQLite
+    try:
+        user_prompt_text = req.prompt or "🎤 Spoken Voice Command"
+        memory_manager.save_chat_message(
+            msg_id=f"u-{task_id}",
+            user_id=user_id,
+            device_id=device_id,
+            role="user",
+            text=user_prompt_text,
+            is_voice=has_audio,
+            status="done",
+        )
+    except Exception as ue:
+        logger.warning(f"Failed to auto-persist user prompt message: {ue}")
+
     try:
         res = await adk_runner.run(
             prompt=req.prompt,
@@ -44,6 +59,7 @@ async def execute_chat(req: ChatRequest):
             device_id=device_id,
             task_id=task_id,
         )
+
         if isinstance(res, dict):
             res["userId"] = user_id
             res["deviceId"] = device_id

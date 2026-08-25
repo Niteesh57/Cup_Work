@@ -78,8 +78,17 @@ export function ToolCallTimeline({
     return null;
   }
 
-  const lastStepAgent = steps.length > 0 ? steps[steps.length - 1].agentName : undefined;
-  const currentActiveAgentName = propActiveAgent || lastStepAgent || 'root';
+  const lastStep = steps.length > 0 ? steps[steps.length - 1] : undefined;
+  const lastStepAgent = lastStep?.agentName;
+  const isLastTransfer = lastStep?.actionName === 'transfer_to_agent' || lastStep?.actionName === 'transfer_to_agent_tool';
+  const lastParams = lastStep?.parameters as Record<string, unknown> | undefined;
+  const lastArgs = (lastStep as unknown as { args?: Record<string, unknown> })?.args;
+  const transferredTarget = isLastTransfer
+    ? String(lastParams?.agent_name || lastArgs?.agent_name || '').toLowerCase()
+    : undefined;
+
+
+  const currentActiveAgentName = propActiveAgent || transferredTarget || lastStepAgent || 'root';
   const currentAgentMeta = resolveAgentMeta(currentActiveAgentName);
 
   const durationSec = isThinking

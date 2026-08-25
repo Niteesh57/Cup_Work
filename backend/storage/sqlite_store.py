@@ -589,15 +589,16 @@ class SqliteStore:
         with self._get_connection() as conn:
             if device_id and device_id != "all":
                 cur = conn.execute(
-                    "SELECT * FROM daily_chat_messages WHERE user_id = ? AND device_id = ? AND date_str = ? ORDER BY created_at ASC",
+                    "SELECT * FROM daily_chat_messages WHERE (user_id = ? OR user_id = 'usr_local' OR user_id = 'default') AND (device_id = ? OR device_id = 'desktop-main' OR device_id = 'all') AND date_str = ? ORDER BY created_at ASC",
                     (user_id, device_id, dt_str),
                 )
             else:
                 cur = conn.execute(
-                    "SELECT * FROM daily_chat_messages WHERE user_id = ? AND date_str = ? ORDER BY created_at ASC",
+                    "SELECT * FROM daily_chat_messages WHERE (user_id = ? OR user_id = 'usr_local' OR user_id = 'default') AND date_str = ? ORDER BY created_at ASC",
                     (user_id, dt_str),
                 )
             rows = cur.fetchall()
+
 
         messages = []
         for r in rows:
@@ -647,8 +648,25 @@ class SqliteStore:
             })
         return messages
 
+    def delete_chat_message(self, msg_id: str, user_id: Optional[str] = None) -> bool:
+        """Deletes a specific chat message from daily_chat_messages."""
+        with self._get_connection() as conn:
+            if user_id and user_id != "default" and user_id != "all":
+                conn.execute(
+                    "DELETE FROM daily_chat_messages WHERE id = ? AND user_id = ?",
+                    (msg_id, user_id),
+                )
+
+            else:
+                conn.execute(
+                    "DELETE FROM daily_chat_messages WHERE id = ?",
+                    (msg_id,),
+                )
+            conn.commit()
+        return True
 
     def clear_today_chat_messages(self, user_id: str, device_id: Optional[str] = None, date_str: Optional[str] = None):
+
         dt_str = date_str or time.strftime("%Y-%m-%d")
         with self._get_connection() as conn:
             if device_id and device_id != "all":

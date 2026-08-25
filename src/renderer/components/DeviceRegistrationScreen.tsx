@@ -8,6 +8,7 @@ interface DeviceRegistrationScreenProps {
   deviceName: string;
   suggestedUserName: string;
   onRegister: (customName: string) => Promise<boolean>;
+  onOpenSettings?: () => void;
 }
 
 const ROTATING_WORDS = [
@@ -24,6 +25,7 @@ export function DeviceRegistrationScreen({
   deviceName,
   suggestedUserName,
   onRegister,
+  onOpenSettings,
 }: DeviceRegistrationScreenProps) {
   const [currentWordIdx, setCurrentWordIdx] = useState(0);
   const [userNameInput, setUserNameInput] = useState(suggestedUserName || 'CosmicPilot_42');
@@ -198,6 +200,18 @@ export function DeviceRegistrationScreen({
               </>
             )}
           </button>
+
+          {onOpenSettings && (
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="text-xs text-zinc-500 hover:text-zinc-800 underline font-medium transition-colors cursor-pointer"
+              >
+                Change Backend Server URL
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

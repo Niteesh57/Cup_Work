@@ -201,17 +201,16 @@ export function AgentFlowGraph({
   const clusters = useMemo<AgentCluster[]>(() => {
     const result: AgentCluster[] = [];
     if (steps.length === 0) {
-      if (isThinking) {
-        const rootMeta = resolveAgentMeta(propActiveAgent || 'root');
-        result.push({
-          id: 'cluster-root-initial',
-          agentName: propActiveAgent || 'root',
-          agentMeta: rootMeta,
-          steps: [],
-          isCurrentActive: true,
-          totalDurationMs: 0,
-        });
-      }
+      const initialAgent = propActiveAgent || 'root';
+      const rootMeta = resolveAgentMeta(initialAgent);
+      result.push({
+        id: 'cluster-root-initial',
+        agentName: initialAgent,
+        agentMeta: rootMeta,
+        steps: [],
+        isCurrentActive: isThinking,
+        totalDurationMs: 0,
+      });
       return result;
     }
 
@@ -235,18 +234,28 @@ export function AgentFlowGraph({
       }
     });
 
-    if (isThinking && result.length > 0) {
-      const activeName = (propActiveAgent || steps[steps.length - 1].agentName || 'root').toLowerCase();
+    // Check if the final active agent or a transferred target agent is different from the last cluster
+    const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
+    const isLastTransfer = lastStep?.actionName === 'transfer_to_agent' || lastStep?.actionName === 'transfer_to_agent_tool';
+    const lastParams = lastStep?.parameters as Record<string, unknown> | undefined;
+    const lastArgs = (lastStep as unknown as { args?: Record<string, unknown> })?.args;
+    const transferredTarget = isLastTransfer
+      ? String(lastParams?.agent_name || lastArgs?.agent_name || '').toLowerCase()
+      : null;
+
+
+    const targetAgentName = (transferredTarget || propActiveAgent || '').toLowerCase().trim();
+    if (targetAgentName && result.length > 0) {
       const lastCluster = result[result.length - 1];
-      if (lastCluster.agentName === activeName) {
-        lastCluster.isCurrentActive = true;
+      if (lastCluster.agentName === targetAgentName) {
+        lastCluster.isCurrentActive = isThinking;
       } else {
         result.push({
-          id: `cluster-${activeName}-active`,
-          agentName: activeName,
-          agentMeta: resolveAgentMeta(activeName),
+          id: `cluster-${targetAgentName}-${isThinking ? 'active' : 'final'}`,
+          agentName: targetAgentName,
+          agentMeta: resolveAgentMeta(targetAgentName),
           steps: [],
-          isCurrentActive: true,
+          isCurrentActive: isThinking,
           totalDurationMs: 0,
         });
       }

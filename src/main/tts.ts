@@ -5,12 +5,21 @@
  * streaming Gemini TTS (24kHz 16-bit PCM).
  */
 
-let backendHttp = (process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '');
+let customBackendHttp = '';
 
 export function setTtsBackendUrl(url: string): void {
   if (url && typeof url === 'string') {
-    backendHttp = url.trim().replace(/\/+$/, '');
+    customBackendHttp = url.trim().replace(/\/+$/, '');
   }
+}
+
+export function getTtsBackendUrl(): string {
+  if (customBackendHttp) return customBackendHttp;
+  const envUrl = process.env.PYTHON_BACKEND_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  return 'http://127.0.0.1:8765';
 }
 
 /**
@@ -18,7 +27,8 @@ export function setTtsBackendUrl(url: string): void {
  */
 export function stopAllTts(taskId?: string): void {
   try {
-    fetch(`${backendHttp}/api/voice/stop-tts`, {
+    const url = getTtsBackendUrl();
+    fetch(`${url}/api/voice/stop-tts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ taskId: taskId || '' }),
@@ -41,7 +51,8 @@ export async function streamGeminiTts(
   }
 
   try {
-    const res = await fetch(`${backendHttp}/api/voice/speak-stream`, {
+    const url = getTtsBackendUrl();
+    const res = await fetch(`${url}/api/voice/speak-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

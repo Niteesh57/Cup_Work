@@ -287,12 +287,28 @@
     .sp-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
     .sp-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
     
-    .sp-content h1, .sp-content .md-h1 { font-size: 16px; font-weight: 700; color: #ffffff; margin: 10px 0 6px; }
-    .sp-content h2, .sp-content .md-h2 { font-size: 14.5px; font-weight: 700; color: #93c5fd; margin: 8px 0 4px; }
-    .sp-content h3, .sp-content .md-h3 { font-size: 13.5px; font-weight: 600; color: #67e8f9; margin: 6px 0 4px; }
+    .sp-content h1, .sp-content .md-h1 { font-size: 16px; font-weight: 700; color: #ffffff; margin: 12px 0 6px; letter-spacing: -0.01em; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; }
+    .sp-content h2, .sp-content .md-h2 { font-size: 14.5px; font-weight: 700; color: #93c5fd; margin: 10px 0 5px; }
+    .sp-content h3, .sp-content .md-h3 { font-size: 13.5px; font-weight: 600; color: #67e8f9; margin: 8px 0 4px; }
+    .sp-content h4, .sp-content .md-h4 { font-size: 12.5px; font-weight: 700; color: #38bdf8; margin: 8px 0 3px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .sp-content h5, .sp-content .md-h5 { font-size: 12px; font-weight: 600; color: #a5f3fc; margin: 6px 0 2px; }
+    .sp-content h6, .sp-content .md-h6 { font-size: 11.5px; font-weight: 600; color: #cbd5e1; margin: 6px 0 2px; }
+    .sp-content hr, .sp-content .md-hr { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 10px 0; }
     .sp-content p, .sp-content .md-p { margin-bottom: 8px; color: #e2e8f0; }
     .sp-content strong { color: #ffffff; font-weight: 700; }
     .sp-content em { color: #cbd5e1; font-style: italic; }
+    .sp-content del { color: #94a3b8; text-decoration: line-through; }
+    .sp-content kbd {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1.5px 5px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #f8fafc;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
     .sp-content ol, .sp-content .md-ol { margin: 6px 0 10px 22px; list-style-type: decimal; }
     .sp-content ul, .sp-content .md-ul { margin: 6px 0 10px 22px; list-style-type: disc; }
     .sp-content li { margin-bottom: 6px; color: #e2e8f0; }
@@ -306,13 +322,15 @@
     }
     .sp-content code.md-inline-code {
       font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(56, 189, 248, 0.12);
       color: #38bdf8;
       padding: 2px 6px;
       border-radius: 4px;
       font-size: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-weight: 600;
+      border: 1px solid rgba(56, 189, 248, 0.25);
     }
+
     .sp-content .md-code-block {
       background: #090d16;
       border: 1px solid #1e293b;
@@ -971,21 +989,28 @@
       // Inline code `code`
       text = text.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
 
-      // Headings
-      text = text.replace(/^### (.*$)/gim, '<h3 class="md-h3">$1</h3>');
-      text = text.replace(/^## (.*$)/gim, '<h2 class="md-h2">$1</h2>');
-      text = text.replace(/^# (.*$)/gim, '<h1 class="md-h1">$1</h1>');
+      // Horizontal rules --- or *** or ___
+      text = text.replace(/^\s*(?:---|---|\*\*\*|___)\s*$/gim, '<hr class="md-hr" />');
 
-      // Bold and Italic
+      // Headings from h6 down to h1
+      text = text.replace(/^\s*######\s+(.*$)/gim, '<h6 class="md-h6">$1</h6>');
+      text = text.replace(/^\s*#####\s+(.*$)/gim, '<h5 class="md-h5">$1</h5>');
+      text = text.replace(/^\s*####\s+(.*$)/gim, '<h4 class="md-h4">$1</h4>');
+      text = text.replace(/^\s*###\s+(.*$)/gim, '<h3 class="md-h3">$1</h3>');
+      text = text.replace(/^\s*##\s+(.*$)/gim, '<h2 class="md-h2">$1</h2>');
+      text = text.replace(/^\s*#\s+(.*$)/gim, '<h1 class="md-h1">$1</h1>');
+
+      // Bold and Italic and Strikethrough
       text = text.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
-      text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-      text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
       text = text.replace(/___([^_]+)___/g, '<strong><em>$1</em></strong>');
+      text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+      text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
       text = text.replace(/_([^_]+)_/g, '<em>$1</em>');
+      text = text.replace(/~~([^~]+)~~/g, '<del>$1</del>');
 
       // Blockquotes
-      text = text.replace(/^\> (.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
+      text = text.replace(/^\>\s?(.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
 
       // List parsing
       const lines = text.split(/\r?\n/);
@@ -995,7 +1020,7 @@
 
       for (let line of lines) {
         const numMatch = line.match(/^\s*(\d+)\.\s+(.*)/);
-        const bulletMatch = line.match(/^\s*[-*•]\s+(.*)/);
+        const bulletMatch = line.match(/^\s*[-*•+]\s+(.*)/);
 
         if (numMatch) {
           if (!inOl) { processed.push('<ol class="md-ol">'); inOl = true; }
@@ -1009,7 +1034,7 @@
           if (inOl) { processed.push('</ol>'); inOl = false; }
           if (inUl) { processed.push('</ul>'); inUl = false; }
           const trimmed = line.trim();
-          if (trimmed.length > 0 && !trimmed.startsWith('<h') && !trimmed.startsWith('<blockquote') && !trimmed.startsWith('<div')) {
+          if (trimmed.length > 0 && !trimmed.startsWith('<h') && !trimmed.startsWith('<blockquote') && !trimmed.startsWith('<div') && !trimmed.startsWith('<hr')) {
             processed.push(`<p class="md-p">${line}</p>`);
           } else {
             processed.push(line);
@@ -1021,6 +1046,7 @@
 
       return processed.join('\n');
     }
+
 
     // Draggable ScreenPad logic
     const spHeader = document.querySelector('.sp-header');
