@@ -7,22 +7,23 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 router = APIRouter(tags=["Download"])
 
-# Resolve release directory relative to root
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-PUBLIC_DIR = ROOT_DIR / "public"
-PUBLIC_DOWNLOADS_DIR = PUBLIC_DIR / "downloads"
+# Resolve directories
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+BACKEND_PUBLIC_DIR = BACKEND_DIR / "public"
+ROOT_DIR = BACKEND_DIR.parent
 DIST_RELEASE_DIR = ROOT_DIR / "dist-release"
 RELEASE_DIR = ROOT_DIR / "release"
 
-# Cloud fallback URL (e.g. GitHub Releases or CDN host)
+# Cloud fallback URL (Google Drive direct download link)
 DEFAULT_CLOUD_DOWNLOAD_URL = os.getenv(
     "WINDOWS_INSTALLER_URL", 
-    "https://github.com/Niteesh57/Cup_Work/releases/download/v2.0.0/Cup-Work-Setup-2.0.0.exe"
+    "https://drive.google.com/uc?export=download&id=1sMWQ5-md6SBVClYdXE39VyRkFk8eGo5l"
 )
 
 
+
 def _find_installer() -> Optional[Path]:
-    search_dirs = [PUBLIC_DOWNLOADS_DIR, PUBLIC_DIR, DIST_RELEASE_DIR, RELEASE_DIR]
+    search_dirs = [BACKEND_PUBLIC_DIR, DIST_RELEASE_DIR, RELEASE_DIR]
     candidates = []
     for d in search_dirs:
         if d.exists():

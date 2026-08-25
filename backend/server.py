@@ -24,6 +24,8 @@ logger = logging.getLogger("cup_work.server")
 ROOT_DIR = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = ROOT_DIR / "public"
 LANDING_DIR = PUBLIC_DIR / "landing"
+BACKEND_PUBLIC_DIR = Path(__file__).resolve().parent / "public"
+BACKEND_PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
@@ -48,6 +50,8 @@ app.include_router(api_router)
 # ── Static Landing Page & Assets ──────────────────────────────────────────────
 if PUBLIC_DIR.exists():
     app.mount("/public", StaticFiles(directory=str(PUBLIC_DIR)), name="public")
+if BACKEND_PUBLIC_DIR.exists():
+    app.mount("/backend-public", StaticFiles(directory=str(BACKEND_PUBLIC_DIR)), name="backend-public")
 
 @app.get("/")
 @app.get("/landing")

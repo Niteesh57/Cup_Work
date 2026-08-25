@@ -42,6 +42,9 @@ temp/
 *.tar.gz
 public/downloads/
 public/*.exe
+backend/public/
+backend/public/*.exe
+
 
 # App Agent State & Database
 .agent-state/
