@@ -17,8 +17,9 @@ RELEASE_DIR = ROOT_DIR / "release"
 # Cloud fallback URL (e.g. GitHub Releases or CDN host)
 DEFAULT_CLOUD_DOWNLOAD_URL = os.getenv(
     "WINDOWS_INSTALLER_URL", 
-    "https://github.com/Niteesh57/Jave/releases/download/v2.0.0/Cup-Work-Setup-2.0.0.exe"
+    "https://github.com/Niteesh57/Cup_Work/releases/download/v2.0.0/Cup-Work-Setup-2.0.0.exe"
 )
+
 
 def _find_installer() -> Optional[Path]:
     search_dirs = [PUBLIC_DOWNLOADS_DIR, PUBLIC_DIR, DIST_RELEASE_DIR, RELEASE_DIR]
