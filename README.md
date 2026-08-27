@@ -133,7 +133,7 @@ Cup Work:
 ## 🌟 Table of Contents
 
 - [💡 The Core Breakthrough](#the-core-breakthrough)
-- [🎬 30-Second Video Demo & Live Cloud Product](#demo-video)
+- [🎬 Video Demo & Live Cloud Product](#demo-video)
 - [🎯 Why Cup Work? (Why It's Different)](#why-cup-work)
 - [📸 Product Interface & Screenshots](#screenshots)
 - [🏗️ Full System Architecture & Agentic Execution Loop](#architecture)
