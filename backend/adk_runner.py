@@ -35,7 +35,7 @@ class AdkRunner:
         self._user_locks: dict[str, asyncio.Lock] = {}
         self._session_service = InMemorySessionService()
         self._app = App(
-            name="hey-jave",
+            name="cup-work",
             root_agent=root_agent,
             context_cache_config=ContextCacheConfig(),
         )

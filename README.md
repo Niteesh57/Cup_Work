@@ -1,8 +1,14 @@
 <div align="center">
 
-# ☕ Cup Work (Hey Jave)
+# ☕ Cup Work
 
-### *Your Autonomous Multimodal Desktop Companion & On-Screen AI Agent*
+### *Autonomous Multimodal Desktop AI Coworker & On-Screen Computer-Use Agent*
+
+**Built for the #AllThingsAgenticHackathon** 🚀
+
+[![Live Cloud Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Cloud%20Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://cup-work-git-619077244859.us-central1.run.app)
+[![YouTube Video Demo](https://img.shields.io/badge/📺%20Video%20Demo-YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)
+[![Devpost Project](https://img.shields.io/badge/🏆%20Devpost-Submission-003E54?style=for-the-badge&logo=devpost&logoColor=white)](https://devpost.com/software/hey-jave)
 
 [![Gemini 3.7 Flash](https://img.shields.io/badge/Gemini-3.7%20Flash%20%26%20Vision-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
 [![Google ADK](https://img.shields.io/badge/Google%20ADK-Agent%20Development%20Kit-34A853?style=for-the-badge&logo=googlecloud&logoColor=white)](https://github.com/google/adk-python)
@@ -12,16 +18,83 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 <p align="center">
-  <strong>Cup Work</strong> transforms your desktop into an interactive, collaborative workspace. Powered by <strong>Google Gemini 3.7</strong> and the <strong>Google Agent Development Kit (ADK)</strong>, Cup Work acts as a talkative companion, an on-screen animated whiteboard tutor, an intuitive UI guide, and an autonomous visual Windows automation executor.
+  <strong>Cup Work gives AI agents human-level computer access through the screen, keyboard, mouse, browser, and desktop UI — allowing agents to operate applications without requiring a custom API integration for every task.</strong>
+</p>
+
+<p align="center">
+  <a href="https://cup-work-git-619077244859.us-central1.run.app">🌐 <strong>Try Live Web App</strong></a> &nbsp;•&nbsp;
+  <a href="https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e">▶️ <strong>Watch Video Demo</strong></a> &nbsp;•&nbsp;
+  <a href="https://devpost.com/software/hey-jave">🏆 <strong>Devpost Submission</strong></a> &nbsp;•&nbsp;
+  <a href="#quick-start">⚡ <strong>5-Minute Setup</strong></a>
+</p>
+
+<br />
+
+<p align="center">
+  <img src="public/product_img/Layers.PNG" alt="Cup Work Desktop AI Coworker & On-Screen Interface" width="100%" />
 </p>
 
 ---
 
 </div>
 
+> [!NOTE]
+> ### 🏆 #AllThingsAgenticHackathon Submission
+> **Cup Work** was engineered for the **#AllThingsAgenticHackathon** leveraging **Google Gemini 3.7 Flash**, **Gemini 3.7 Vision**, and the **Google Agent Development Kit (ADK)** to pioneer native agentic computer use, autonomous multimodal desktop workflows, and live transparent whiteboard tutoring.
+>
+> 🔗 **Quick Links for Judges & Evaluators:**
+> - 🌐 **Live Web Application:** [cup-work-git-619077244859.us-central1.run.app](https://cup-work-git-619077244859.us-central1.run.app)
+> - 📺 **Full Video Walkthrough Demo (YouTube):** [Watch Demo Video (https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)](https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)
+> - 🏅 **Devpost Project Submission:** [Cup Work on Devpost](https://devpost.com/software/hey-jave)
+
+---
+
+## 💡 The Core Breakthrough
+
+Most AI agents interact with software through APIs, command-line tools, or predefined integrations.
+
+**Cup Work takes a different approach: it gives agents access to the computer itself.**
+
+The agent can see the screen, understand the UI, use the keyboard and mouse, interact with browsers and desktop applications, verify the result, and recover when something goes wrong.
+
+Instead of building an integration for every application, we give the agent the same high-level interface a human uses.
+
+> **From AI that uses tools → AI that uses computers.**
+
+---
+
+## 🎯 Why Cup Work?
+
+Traditional AI agents are bottlenecked by API availability, brittle schemas, and chat window confinement. Cup Work bridges the gap between high-level AI reasoning and native OS execution:
+
+```
+Traditional Agents:
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   AI Agent   │ ──> │  API / Tool  │ ──> │ Application  │
+└──────────────┘     └──────────────┘     └──────────────┘
+
+Cup Work:
+┌──────────────┐     ┌────────────────────────────────────┐     ┌──────────────┐
+│   AI Agent   │ ──> │ Screen + Keyboard + Mouse + OS UI  │ ──> │ Application  │
+└──────────────┘     └────────────────────────────────────┘     └──────────────┘
+```
+
+| Dimension | Traditional Agents | ☕ Cup Work |
+| :--- | :--- | :--- |
+| **Interface** | Restricted to predefined APIs & tool schemas | Screen perception, native keyboard, mouse, and desktop UI |
+| **Application Reach** | Only applications with exposed APIs | Any Windows desktop application, browser, or legacy software |
+| **Verification Loop** | Blind execution without visual confirmation | Closed-loop vision verification (`goal_verifier`) after every action |
+| **User Collaboration** | Trapped in an isolated chat sidebar | Live transparent on-screen whiteboard, visual pointers, & voice |
+| **Safety & Control** | Hardcoded permissions or unmonitored scripts | Zero-Trust Human-In-The-Loop (`hitl_manager`) safety gate |
+| **Integration Overhead** | Weeks of engineering per application | **Zero per-app integration code required** |
+
+---
+
 ## 🌟 Table of Contents
 
-- [⚡ Quick Start (2-Minute Spin-Up)](#quick-start)
+- [⚡ Quick Start (5-Minute Setup)](#quick-start)
+- [💡 The Core Breakthrough](#the-core-breakthrough)
+- [🎯 Why Cup Work?](#why-cup-work)
 - [📖 Overview](#overview)
 - [🚀 Key Pillars & Capabilities](#key-pillars)
 - [🏗️ Full System Architecture & Agentic Execution Loop](#architecture)
@@ -43,14 +116,14 @@
 
 ---
 
-## <a id="quick-start"></a>⚡ Quick Start (2-Minute Spin-Up)
+## <a id="quick-start"></a>⚡ Quick Start (5-Minute Setup)
 
-For evaluators and judges who want to spin up Cup Work in under 2 minutes:
+For evaluators and judges who want to spin up Cup Work in under 5 minutes:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Niteesh57/Jave.git
-cd Jave
+git clone https://github.com/Niteesh57/Cup_Work.git
+cd Cup_Work
 
 # 2. Configure API Key (paste your Gemini API key in backend/.env)
 cp backend/.env.example backend/.env
@@ -96,6 +169,19 @@ Most desktop AI assistants are confined to a static sidebar chat box. **Cup Work
 - It **autonomously automates Windows apps** (MS Word, Excel, Chrome, File Explorer) through an `OBSERVE → ACT → MID-FLIGHT VERIFY → REDO` loop.
 - It **speaks with human emotional inflection** using Gemini's streaming voice synthesis and emotional audio tags (`[excitedly]`, `[curious]`, `[whispers]`, `[thoughtful]`).
 - It **remembers your habits and preferences** across sessions and devices using a temporal SQLite memory manager.
+
+### 📸 Autonomous Desktop Execution in Action
+
+| 🧬 Multi-Agent Execution Graph | ⏱️ Chained Tool Execution Timeline |
+| :---: | :---: |
+| <img src="public/product_img/Screenshot 2026-08-27 071651.png" alt="Multi-Agent Execution Graph" width="100%" /> | <img src="public/product_img/Screenshot 2026-08-27 071903.png" alt="Chained Tool Execution Timeline" width="100%" /> |
+| *Real-time visualization of agent routing and phase handoffs* | *Live execution tracker for multi-action desktop workflows* |
+
+<p align="center">
+  <img src="public/product_img/Screenshot 2026-08-27 071927.png" alt="Internal Execution Steps & Reasoning Logs" width="90%" />
+  <br />
+  <em>Deep-inspection mode: Real-time agent thought traces, parameter inspections, and tool responses</em>
+</p>
 
 ---
 
@@ -427,8 +513,8 @@ Before running Cup Work, make sure your machine has:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Niteesh57/Jave.git
-cd Jave
+git clone https://github.com/Niteesh57/Cup_Work.git
+cd Cup_Work
 
 # Copy backend environment template
 cp backend/.env.example backend/.env
@@ -513,13 +599,13 @@ Invoke-RestMethod http://127.0.0.1:8765/health
 curl http://127.0.0.1:8765/health
 ```
 
-Expected output: `{"status":"ok","service":"hey-jave-brain","default_model":"gemini-3.7-flash", ...}`
+Expected output: `{"status":"ok","service":"cup-work-brain","default_model":"gemini-3.7-flash", ...}`
 
 ---
 
 ### <a id="step-4"></a>Step 4: Launch the Desktop Client (Terminal 2)
 
-Open **Terminal 2** from the root `Jave/` folder:
+Open **Terminal 2** from the root `Cup_Work/` folder:
 
 ```bash
 # 1. Install Node dependencies
@@ -665,5 +751,5 @@ python -m pytest test_backend.py test_routes.py -v
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 <div align="center">
-  <sub>Built with ❤️ for the Google Gemini Developer Competition.</sub>
+  <sub>Built with ❤️ for the #AllThingsAgenticHackathon.</sub>
 </div>

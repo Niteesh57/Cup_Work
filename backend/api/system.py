@@ -15,7 +15,7 @@ async def health_check():
     """Returns server health status and runtime metadata."""
     return {
         "status": "ok",
-        "service": "hey-jave-brain",
+        "service": "cup-work-brain",
         "vertex_ai": config.USE_VERTEXAI,
         "default_model": config.DEFAULT_MODEL,
         "active_clients": len(electron_bridge._clients),
