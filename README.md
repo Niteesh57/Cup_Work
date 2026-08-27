@@ -66,7 +66,7 @@ Instead of building an integration for every application, we give the agent the 
 
 ---
 
-## <a id="demo-video"></a>🎬 30-Second Video Demo & Live Cloud Product
+## <a id="demo-video"></a>🎬 Video Demo & Live Cloud Product
 
 Judges and evaluators can experience Cup Work immediately:
 
@@ -96,6 +96,7 @@ Cup Work:
 │   AI Agent   │ ──> │ Screen + Keyboard + Mouse + OS UI  │ ──> │ Application  │
 └──────────────┘     └────────────────────────────────────┘     └──────────────┘
 ```
+
 
 | Dimension | Traditional Agents | ☕ Cup Work |
 | :--- | :--- | :--- |
