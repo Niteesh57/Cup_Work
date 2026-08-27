@@ -2,7 +2,7 @@
 
 # ☕ Cup Work
 
-### *Autonomous Multimodal Desktop AI Coworker & On-Screen Computer-Use Agent*
+### *From AI That Uses Tools to AI That Uses Computers. 🤖💻*
 
 **Built for the #AllThingsAgenticHackathon** 🚀
 
@@ -22,16 +22,10 @@
 </p>
 
 <p align="center">
-  <a href="https://cup-work-git-619077244859.us-central1.run.app">🌐 <strong>Try Live Web App</strong></a> &nbsp;•&nbsp;
-  <a href="https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e">▶️ <strong>Watch Video Demo</strong></a> &nbsp;•&nbsp;
+  <a href="https://cup-work-git-619077244859.us-central1.run.app">🌐 <strong>Try Web Demo / Download App</strong></a> &nbsp;•&nbsp;
+  <a href="https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e">▶️ <strong>Watch 3-Min Walkthrough Video</strong></a> &nbsp;•&nbsp;
   <a href="https://devpost.com/software/hey-jave">🏆 <strong>Devpost Submission</strong></a> &nbsp;•&nbsp;
-  <a href="#quick-start">⚡ <strong>5-Minute Setup</strong></a>
-</p>
-
-<br />
-
-<p align="center">
-  <img src="public/product_img/Layers.PNG" alt="Cup Work Desktop AI Coworker & On-Screen Interface" width="100%" />
+  <a href="#quick-start">⚡ <strong>Quick Start (5-Minute Setup)</strong></a>
 </p>
 
 ---
@@ -43,13 +37,13 @@
 > **Cup Work** was engineered for the **#AllThingsAgenticHackathon** leveraging **Google Gemini 3.7 Flash**, **Gemini 3.7 Vision**, and the **Google Agent Development Kit (ADK)** to pioneer native agentic computer use, autonomous multimodal desktop workflows, and live transparent whiteboard tutoring.
 >
 > 🔗 **Quick Links for Judges & Evaluators:**
-> - 🌐 **Live Web Application:** [cup-work-git-619077244859.us-central1.run.app](https://cup-work-git-619077244859.us-central1.run.app)
+> - 🌐 **Live Web Application & Windows Download:** [cup-work-git-619077244859.us-central1.run.app](https://cup-work-git-619077244859.us-central1.run.app)
 > - 📺 **Full Video Walkthrough Demo (YouTube):** [Watch Demo Video (https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)](https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)
 > - 🏅 **Devpost Project Submission:** [Cup Work on Devpost](https://devpost.com/software/hey-jave)
 
 ---
 
-## 💡 The Core Breakthrough
+## <a id="the-core-breakthrough"></a>💡 The Core Breakthrough
 
 Most AI agents interact with software through APIs, command-line tools, or predefined integrations.
 
@@ -59,11 +53,26 @@ The agent can see the screen, understand the UI, use the keyboard and mouse, int
 
 Instead of building an integration for every application, we give the agent the same high-level interface a human uses.
 
-> **From AI that uses tools → AI that uses computers.**
+> ### **From AI that uses tools → AI that uses computers.**
 
 ---
 
-## 🎯 Why Cup Work?
+## <a id="demo-video"></a>🎬 30-Second Video Demo & Live Cloud Product
+
+Judges and evaluators can experience Cup Work immediately:
+
+| 📺 Watch Full Video Walkthrough | 🌐 Launch Cloud Demo & Download Windows App |
+| :---: | :---: |
+| [![Watch Cup Work Video Demo](https://img.shields.io/badge/▶️%20Watch%20Demo%20Video-YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e) | [![Open Web App](https://img.shields.io/badge/🌐%20Launch%20Live%20Web%20App-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://cup-work-git-619077244859.us-central1.run.app/) |
+| **[Watch on YouTube (https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)](https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)** | **[Open Live Demo: cup-work-git-619077244859.us-central1.run.app](https://cup-work-git-619077244859.us-central1.run.app/)** |
+
+> [!TIP]
+> **Download & Test the Standalone Product:**
+> Visit **[cup-work-git-619077244859.us-central1.run.app](https://cup-work-git-619077244859.us-central1.run.app/)** and click the **"Download for Windows"** button to download and run the pre-built Windows Desktop installer executable directly on your PC!
+
+---
+
+## <a id="why-cup-work"></a>🎯 Why Cup Work?
 
 Traditional AI agents are bottlenecked by API availability, brittle schemas, and chat window confinement. Cup Work bridges the gap between high-level AI reasoning and native OS execution:
 
@@ -90,17 +99,39 @@ Cup Work:
 
 ---
 
+## <a id="screenshots"></a>📸 Product Interface & Screenshots
+
+<p align="center">
+  <img src="public/product_img/Layers.PNG" alt="Cup Work Desktop AI Coworker & Multimodal Overlay" width="100%" />
+  <br />
+  <em>Cup Work Desktop Coworker — Active audio aura, contextual top status pills, and transparent system overlay</em>
+</p>
+
+| 🧬 Multi-Agent Execution Graph | ⏱️ Chained Tool Execution Timeline |
+| :---: | :---: |
+| <img src="public/product_img/Screenshot 2026-08-27 071651.png" alt="Multi-Agent Execution Graph" width="100%" /> | <img src="public/product_img/Screenshot 2026-08-27 071903.png" alt="Chained Tool Execution Timeline" width="100%" /> |
+| *Real-time dynamic visualization of Google ADK multi-agent phase handoffs* | *Live execution tracker displaying multi-action chained Windows tool calls* |
+
+<p align="center">
+  <img src="public/product_img/Screenshot 2026-08-27 071927.png" alt="Internal Execution Steps & Reasoning Logs" width="90%" />
+  <br />
+  <em>Deep-inspection mode: Real-time agent thought traces, parameter inspections, and tool responses</em>
+</p>
+
+---
+
 ## 🌟 Table of Contents
 
-- [⚡ Quick Start (5-Minute Setup)](#quick-start)
 - [💡 The Core Breakthrough](#the-core-breakthrough)
-- [🎯 Why Cup Work?](#why-cup-work)
-- [📖 Overview](#overview)
-- [🚀 Key Pillars & Capabilities](#key-pillars)
+- [🎬 30-Second Video Demo & Live Cloud Product](#demo-video)
+- [🎯 Why Cup Work? (Why It's Different)](#why-cup-work)
+- [📸 Product Interface & Screenshots](#screenshots)
 - [🏗️ Full System Architecture & Agentic Execution Loop](#architecture)
+- [🚀 Key Pillars & Capabilities](#key-pillars)
 - [🤖 Agent Tool Capabilities & Model Execution Matrix](#agent-tools)
 - [🔬 How Gemini Models Execute Desktop Workflows (Deep-Dive)](#model-execution)
 - [📁 Project Structure](#project-structure)
+- [⚡ Quick Start (5-Minute Setup)](#quick-start)
 - [🛠️ Detailed Step-by-Step Spin-Up Guide](#spin-up-guide)
   - [Prerequisites](#prerequisites)
   - [Step 1: Get a Gemini API Key](#step-1)
@@ -113,120 +144,6 @@ Cup Work:
 - [🩺 Troubleshooting & Common Gotchas](#troubleshooting)
 - [🧪 Running Automated Tests](#running-tests)
 - [📄 License](#license)
-
----
-
-## <a id="quick-start"></a>⚡ Quick Start (5-Minute Setup)
-
-For evaluators and judges who want to spin up Cup Work in under 5 minutes:
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/Niteesh57/Cup_Work.git
-cd Cup_Work
-
-# 2. Configure API Key (paste your Gemini API key in backend/.env)
-cp backend/.env.example backend/.env
-# Edit backend/.env and set: GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-### In Terminal 1 (Python Backend Server)
-
-```bash
-cd backend
-python -m venv .venv
-
-# Activate Virtual Environment:
-# Windows PowerShell:  .\.venv\Scripts\Activate.ps1
-# Windows CMD:         .\.venv\Scripts\activate.bat
-# macOS / Linux:       source .venv/bin/activate
-
-pip install -r requirements.txt
-python main.py
-```
-
-> Server will start at `http://127.0.0.1:8765` with `[OK] Cup Work Python Brain Server`.
-
-### In Terminal 2 (Electron Desktop Client)
-
-```bash
-# From the project root:
-npm install
-npm run build:electron
-npm start
-```
-
-🎉 **That's it!** The Cup Work desktop companion and transparent screen overlay will launch.
-
----
-
-## <a id="overview"></a>📖 Overview
-
-Most desktop AI assistants are confined to a static sidebar chat box. **Cup Work** breaks free from the chat window:
-
-- It **draws animated architectural diagrams** directly over your desktop screen with an auto-gliding camera.
-- It **sees your screen** and highlights UI buttons, menus, and chessboard squares with real-time bounding boxes and pointer arrows.
-- It **autonomously automates Windows apps** (MS Word, Excel, Chrome, File Explorer) through an `OBSERVE → ACT → MID-FLIGHT VERIFY → REDO` loop.
-- It **speaks with human emotional inflection** using Gemini's streaming voice synthesis and emotional audio tags (`[excitedly]`, `[curious]`, `[whispers]`, `[thoughtful]`).
-- It **remembers your habits and preferences** across sessions and devices using a temporal SQLite memory manager.
-
-### 📸 Autonomous Desktop Execution in Action
-
-| 🧬 Multi-Agent Execution Graph | ⏱️ Chained Tool Execution Timeline |
-| :---: | :---: |
-| <img src="public/product_img/Screenshot 2026-08-27 071651.png" alt="Multi-Agent Execution Graph" width="100%" /> | <img src="public/product_img/Screenshot 2026-08-27 071903.png" alt="Chained Tool Execution Timeline" width="100%" /> |
-| *Real-time visualization of agent routing and phase handoffs* | *Live execution tracker for multi-action desktop workflows* |
-
-<p align="center">
-  <img src="public/product_img/Screenshot 2026-08-27 071927.png" alt="Internal Execution Steps & Reasoning Logs" width="90%" />
-  <br />
-  <em>Deep-inspection mode: Real-time agent thought traces, parameter inspections, and tool responses</em>
-</p>
-
----
-
-## <a id="key-pillars"></a>🚀 Key Pillars & Capabilities
-
-### 1. On-Screen Infinite Whiteboard Agent (`on_screen_agent`)
-
-When you ask conceptual or architectural questions (*"How does OAuth2 work?"*, *"Explain Kafka internal architecture"*, *"Teach me Kubernetes"*):
-
-- **Precompiled Progressive Lectures**: Precompiles multi-step SVG sketch nodes (boxes, database cylinders, cloud services, and curved animated arrows).
-- **Auto-Gliding Infinite Canvas**: Automatically pans and centers the virtual camera onto active nodes as each step unfolds.
-- **Synchronized Voice Narration**: Speaks detailed explanations for every step using expressive Gemini TTS.
-- **Mid-Flight Doubts & In-Flight Clarifications**: Ask a question mid-lecture (*"Wait, what if the consumer fails?"*) and the agent anchors a dynamic callout card to the active node without wiping the canvas.
-
-### 2. Hierarchical ADK Multi-Agent Mesh
-
-Built natively on the **Google Agent Development Kit (ADK)**:
-
-- **`root_agent`**: Evaluates intent and dynamically transfers control to specialized agents.
-- **Context Injection**: Every agent invocation receives aggregated prompt context containing active user preferences, active todo tasks, and short-term dialogue history.
-
-### 3. Closed-Loop Desktop UI Automation (`main_executor`)
-
-For end-to-end desktop task execution:
-
-- **Windows UI Automation (UIA) Tree**: Inspects controls, ribbon tabs, buttons, and text fields via native Windows accessibility APIs.
-- **Direct Mouse & Keyboard**: High-precision mouse clicks, smooth drags, scroll deltas, and hotkey combinations (`Ctrl+N`, `Ctrl+A`, `Ctrl+Alt+1`).
-- **Mid-Flight Goal Verification (`goal_verifier`)**: Uses Gemini 3.7 Vision to capture a post-action screenshot and verify whether the sub-goal was visually achieved before proceeding or self-correcting.
-
-### 4. Expressive Gemini TTS with Inline Emotion Tags
-
-- Over 30 voice personalities (e.g., *Kore*, *Puck*, *Fenrir*, *Aoede*, *Sulafat*).
-- Directly embeds natural emotion tags: `[excitedly]`, `[cheerfully]`, `[curious]`, `[thoughtful]`, `[serious]`, `[whispers]`, `[laughs]`.
-- Low-latency real-time PCM/WAV audio streaming over WebSockets.
-
-### 5. Visual Guidance & Strange Planner (`strange_planner`)
-
-- Pinpoints options and buttons across web consoles and desktop software with normalized `[ymin, xmin, ymax, xmax]` bounding boxes and arrows.
-- Analyzes strategy games (e.g. Chess) with precise 8x8 square grid calculations, drawing move arrows from origin to target square.
-
-### 6. Long-Term Temporal Preference Memory
-
-- **Temporal States**: Tracks preferences with `present` vs. `expired` states (e.g. *"user switched from React to Vue"*).
-- **Multi-Device Sync**: Auto-provisions hardware IDs (`desktop-main`, `laptop-work`) and links them to user identities.
-- **Integrated Todo Task Management**: Creates, updates, and tracks actionable tasks directly through voice or chat.
 
 ---
 
@@ -481,6 +398,50 @@ cup_work/
 ├── vite.config.ts                  # Vite + Electron build configuration
 └── tailwind.config.js              # Tailwind CSS styling configuration
 ```
+
+---
+
+## <a id="quick-start"></a>⚡ Quick Start (5-Minute Setup)
+
+For evaluators and judges who want to spin up Cup Work in under 5 minutes:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Niteesh57/Cup_Work.git
+cd Cup_Work
+
+# 2. Configure API Key (paste your Gemini API key in backend/.env)
+cp backend/.env.example backend/.env
+# Edit backend/.env and set: GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+### In Terminal 1 (Python Backend Server)
+
+```bash
+cd backend
+python -m venv .venv
+
+# Activate Virtual Environment:
+# Windows PowerShell:  .\.venv\Scripts\Activate.ps1
+# Windows CMD:         .\.venv\Scripts\activate.bat
+# macOS / Linux:       source .venv/bin/activate
+
+pip install -r requirements.txt
+python main.py
+```
+
+> Server will start at `http://127.0.0.1:8765` with `[OK] Cup Work Python Brain Server`.
+
+### In Terminal 2 (Electron Desktop Client)
+
+```bash
+# From the project root:
+npm install
+npm run build:electron
+npm start
+```
+
+🎉 **That's it!** The Cup Work desktop companion and transparent screen overlay will launch.
 
 ---
 
