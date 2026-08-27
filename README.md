@@ -6,11 +6,12 @@
 
 **Built for the #AllThingsAgenticHackathon** 🚀
 
+[![Download Windows App](https://img.shields.io/badge/💻%20Download%20Now-Windows%20App%20(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://huggingface.co/nagireddy5/APP/resolve/main/Cup-Work-Setup-2.0.0.exe?download=true)
 [![Live Cloud Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Cloud%20Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://cup-work-git-619077244859.us-central1.run.app)
 [![YouTube Video Demo](https://img.shields.io/badge/📺%20Video%20Demo-YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)
 [![Devpost Project](https://img.shields.io/badge/🏆%20Devpost-Submission-003E54?style=for-the-badge&logo=devpost&logoColor=white)](https://devpost.com/software/hey-jave)
 
-[![Gemini 3.7 Flash](https://img.shields.io/badge/Gemini-3.7%20Flash%20%26%20Vision-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
+[![Gemini 3.7 Flash](https://img.shields.io/badge/Gemini-3.7%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
 [![Google ADK](https://img.shields.io/badge/Google%20ADK-Agent%20Development%20Kit-34A853?style=for-the-badge&logo=googlecloud&logoColor=white)](https://github.com/google/adk-python)
 [![Electron](https://img.shields.io/badge/Electron-34-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
@@ -22,22 +23,30 @@
 </p>
 
 <p align="center">
-  <a href="https://cup-work-git-619077244859.us-central1.run.app">🌐 <strong>Try Web Demo / Download App</strong></a> &nbsp;•&nbsp;
-  <a href="https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e">▶️ <strong>Watch 3-Min Walkthrough Video</strong></a> &nbsp;•&nbsp;
+  <a href="https://huggingface.co/nagireddy5/APP/resolve/main/Cup-Work-Setup-2.0.0.exe?download=true">📥 <strong>Download for Windows (.exe)</strong></a> &nbsp;•&nbsp;
+  <a href="https://cup-work-git-619077244859.us-central1.run.app">🌐 <strong>Launch Web App</strong></a> &nbsp;•&nbsp;
+  <a href="https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e">▶️ <strong>Watch 3-Min Video Demo</strong></a> &nbsp;•&nbsp;
   <a href="https://devpost.com/software/hey-jave">🏆 <strong>Devpost Submission</strong></a> &nbsp;•&nbsp;
-  <a href="#quick-start">⚡ <strong>Quick Start (5-Minute Setup)</strong></a>
+  <a href="#quick-start">⚡ <strong>5-Minute Setup</strong></a>
 </p>
 
 ---
 
 </div>
 
+> [!TIP]
+> ### 📥 Try Cup Work Locally Right Now!
+> **Download the standalone desktop application installer:**  
+> 👉 **[Direct Download Cup-Work-Setup-2.0.0.exe (Windows 10/11)](https://huggingface.co/nagireddy5/APP/resolve/main/Cup-Work-Setup-2.0.0.exe?download=true)**  
+> *(You can also download it from the top button inside the [Live Web App](https://cup-work-git-619077244859.us-central1.run.app/))*
+
 > [!NOTE]
 > ### 🏆 #AllThingsAgenticHackathon Submission
-> **Cup Work** was engineered for the **#AllThingsAgenticHackathon** leveraging **Google Gemini 3.7 Flash**, **Gemini 3.7 Vision**, and the **Google Agent Development Kit (ADK)** to pioneer native agentic computer use, autonomous multimodal desktop workflows, and live transparent whiteboard tutoring.
+> **Cup Work** was engineered for the **#AllThingsAgenticHackathon** leveraging **Google Gemini 3.7 Flash**, and the **Google Agent Development Kit (ADK)** to pioneer native agentic computer use, autonomous multimodal desktop workflows, and live transparent whiteboard tutoring.
 >
 > 🔗 **Quick Links for Judges & Evaluators:**
-> - 🌐 **Live Web Application & Windows Download:** [cup-work-git-619077244859.us-central1.run.app](https://cup-work-git-619077244859.us-central1.run.app)
+> - 📥 **Download Windows App (.exe):** [Cup-Work-Setup-2.0.0.exe](https://huggingface.co/nagireddy5/APP/resolve/main/Cup-Work-Setup-2.0.0.exe?download=true)
+> - 🌐 **Live Web Application:** [cup-work-git-619077244859.us-central1.run.app](https://cup-work-git-619077244859.us-central1.run.app)
 > - 📺 **Full Video Walkthrough Demo (YouTube):** [Watch Demo Video (https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)](https://youtu.be/Qo0pyuk2Whs?si=VE_ND3tiH8A6fF7e)
 > - 🏅 **Devpost Project Submission:** [Cup Work on Devpost](https://devpost.com/software/hey-jave)
 
